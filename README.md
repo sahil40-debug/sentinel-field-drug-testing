@@ -72,7 +72,7 @@ Add new substances by appending to `src/lib/drug-profiles.ts` — the classifier
 
 ## 🤖 The AI model & JSON schema
 
-The image-analysis engine uses the **z-ai-web-dev-sdk** vision API (`zai.chat.completions.createVision`). The prompt is **Gemini-compatible** — to swap to Google Gemini, change only the SDK call in `src/lib/ai-client.ts`; the schema, prompt, and JSON contract stay identical.
+The image-analysis engine uses the **z-ai-web-dev-sdk** vision API (`zai.chat.completions.createVision`). 
 
 ### Input to the model
 - The captured image (base64 data URL)
