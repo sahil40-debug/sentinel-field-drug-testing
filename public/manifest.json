@@ -1,0 +1,40 @@
+{
+  "name": "Sentinel — Field Drug Testing Companion",
+  "short_name": "Sentinel",
+  "description": "AI-assisted presumptive field drug-testing companion with GPS-stamped, tamper-evident records. SIH 2026 — PS-231.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f3fa",
+  "theme_color": "#3d2a5c",
+  "categories": ["productivity", "utilities", "medical"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Field Test",
+      "short_name": "New Test",
+      "url": "/?action=new-test",
+      "description": "Start a new field drug test"
+    },
+    {
+      "name": "Verify a Record",
+      "short_name": "Verify",
+      "url": "/?action=verify",
+      "description": "Verify the integrity of a stored record"
+    }
+  ]
+}

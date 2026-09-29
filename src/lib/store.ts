@@ -41,11 +41,17 @@ interface AppState {
   setCapturedImage: (img: string | null) => void
   location: GeoLocation | null
   setLocation: (l: GeoLocation | null) => void
+  /** Optional manual colour overrides — used when the photo's reference card
+   * or reaction colour isn't clearly captured (bad light, cheap camera). */
+  manualReferenceHex: string | null
+  setManualReferenceHex: (h: string | null) => void
+  manualReactionHex: string | null
+  setManualReactionHex: (h: string | null) => void
   analysis: { result: AiAnalysisResult; imageHash: string; drug: DrugProfileDTO } | null
   setAnalysis: (a: AppState['analysis']) => void
   analysing: boolean
   setAnalysing: (b: boolean) => void
-  /** Fully reset the in-progress new-test flow (selected drug, image, location, result). */
+  /** Fully reset the in-progress new-test flow (selected drug, image, location, colours, result). */
   resetFlow: () => void
 
   // selected record (for detail view)
@@ -72,6 +78,8 @@ export const useApp = create<AppState>((set) => ({
       selectedDrug: null,
       capturedImage: null,
       location: null,
+      manualReferenceHex: null,
+      manualReactionHex: null,
       analysis: null,
       activeRecord: null,
       verification: null,
@@ -86,6 +94,10 @@ export const useApp = create<AppState>((set) => ({
   setCapturedImage: (capturedImage) => set({ capturedImage }),
   location: null,
   setLocation: (location) => set({ location }),
+  manualReferenceHex: null,
+  setManualReferenceHex: (manualReferenceHex) => set({ manualReferenceHex }),
+  manualReactionHex: null,
+  setManualReactionHex: (manualReactionHex) => set({ manualReactionHex }),
   analysis: null,
   setAnalysis: (analysis) => set({ analysis }),
   analysing: false,
@@ -95,6 +107,8 @@ export const useApp = create<AppState>((set) => ({
       selectedDrug: null,
       capturedImage: null,
       location: null,
+      manualReferenceHex: null,
+      manualReactionHex: null,
       analysis: null,
       activeRecord: null,
       verification: null,

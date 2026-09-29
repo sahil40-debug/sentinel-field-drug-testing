@@ -30,13 +30,14 @@ export const AiAnalysisResultSchema = z.object({
   reference_card_detected: z.boolean(),
   reaction_area_detected: z.boolean(),
   image_quality: z.enum(['good', 'acceptable', 'poor']),
+  manual_override_used: z.boolean().default(false),
   notes: z.array(z.string()).default([]),
 })
 export type AiAnalysisResult = z.infer<typeof AiAnalysisResultSchema>
 
 // Backwards-compat alias: older records stored this field as `caveats`.
 // `normaliseAnalysis()` below maps old -> new when reading.
-export type AiAnalysisResultLegacy = Omit<AiAnalysisResult, 'notes'> & { caveats?: string[] }
+export type AiAnalysisResultLegacy = Omit<AiAnalysisResult, 'notes' | 'manual_override_used'> & { caveats?: string[] }
 
 export function normaliseAnalysis(raw: unknown): AiAnalysisResult {
   const o = (raw ?? {}) as Partial<AiAnalysisResult> & { caveats?: string[] }
@@ -51,6 +52,7 @@ export function normaliseAnalysis(raw: unknown): AiAnalysisResult {
     reference_card_detected: o.reference_card_detected ?? false,
     reaction_area_detected: o.reaction_area_detected ?? false,
     image_quality: (o.image_quality ?? 'acceptable') as AiAnalysisResult['image_quality'],
+    manual_override_used: o.manual_override_used ?? false,
     notes,
   }
 }
@@ -66,6 +68,12 @@ export interface AnalysisContext {
   expectedHex: string
   interpretation: string
   source: string
+  /** Optional officer-supplied reference-card colour override, used when the
+   * printed card isn't clearly captured (bad light, cheap camera). */
+  manualReferenceHex?: string | null
+  /** Optional officer-supplied reaction-colour override, used when the reaction
+   * area isn't clearly captured. */
+  manualReactionHex?: string | null
 }
 
 /**
@@ -94,6 +102,10 @@ Rules:
 - Account for lighting by using the reference card as a sanity check of colour fidelity.
 - If the image is blurry, over/under exposed, or the reaction area is not clearly visible, return Inconclusive.
 - Be conservative: when in doubt, return Inconclusive.
+- If the officer has supplied a MANUAL reference colour and/or MANUAL reaction colour override (because the
+  photo didn't capture the colours clearly), treat those values as authoritative for the matching/expected
+  colours they override. Still describe what you SEE in the image, but use the manual values as the ground
+  truth for comparison. Mention in "notes" that a manual override was used.
 
 You MUST respond with a single JSON object and NOTHING else. No markdown, no prose, no code fences.
 The JSON object MUST conform exactly to this shape:
@@ -107,16 +119,26 @@ The JSON object MUST conform exactly to this shape:
   "reference_card_detected": <boolean>,
   "reaction_area_detected": <boolean>,
   "image_quality": "good" | "acceptable" | "poor",
+  "manual_override_used": <boolean>,
   "notes": ["<optional observations / limitations / context strings>"]
 }`
 
-  const user = `TEST DEFINITION (the substance the officer is testing for):
-- Target substance: ${ctx.target}
-- Also known as: ${ctx.aliases.join(', ') || 'n/a'}
-- Reagent / test method: ${ctx.testMethod}
-- Expected reaction colour: ${ctx.expectedColor} (representative reference hex ${ctx.expectedHex})
-- Interpretation note: ${ctx.interpretation}
-- Source: ${ctx.source}
+  const lines = [
+    'TEST DEFINITION (the substance the officer is testing for):',
+    `- Target substance: ${ctx.target}`,
+    `- Also known as: ${ctx.aliases.join(', ') || 'n/a'}`,
+    `- Reagent / test method: ${ctx.testMethod}`,
+    `- Expected reaction colour: ${ctx.expectedColor} (representative reference hex ${ctx.expectedHex})`,
+    `- Interpretation note: ${ctx.interpretation}`,
+    `- Source: ${ctx.source}`,
+  ]
+  if (ctx.manualReferenceHex) {
+    lines.push(`- MANUAL REFERENCE-CARD COLOUR OVERRIDE: #${ctx.manualReferenceHex.replace(/^#/, '')} (the printed reference card was NOT clearly captured; the officer has manually selected this colour as the reference for lighting calibration).`)
+  }
+  if (ctx.manualReactionHex) {
+    lines.push(`- MANUAL REACTION-COLOUR OVERRIDE: #${ctx.manualReactionHex.replace(/^#/, '')} (the reaction area was NOT clearly captured; the officer has manually selected this colour as the observed reaction colour).`)
+  }
+  const user = `${lines.join('\n')}
 
 Analyse the attached photograph of the completed field test and return ONLY the JSON object described.`
 

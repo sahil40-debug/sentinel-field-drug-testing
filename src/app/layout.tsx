@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { RegisterSW } from "@/components/pwa/register-sw";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,10 +22,38 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Digital Companion for Field Drug Testing",
+  title: "Sentinel — Digital Companion for Field Drug Testing",
   description:
-    "Presumptive field drug-testing companion: AI-assisted colour analysis, GPS-stamped tamper-evident records, and verification. SIH 2026 — PS-231.",
-  keywords: ["drug testing", "field test", "presumptive", "Marquis", "colour analysis", "SIH 2026"],
+    "AI-assisted presumptive field drug-testing companion with GPS-stamped, tamper-evident records and verification. SIH 2026 — PS-231.",
+  keywords: ["drug testing", "field test", "presumptive", "Marquis", "colour analysis", "SIH 2026", "PWA"],
+  authors: [{ name: "Sentinel" }],
+  manifest: "/manifest.json",
+  applicationName: "Sentinel",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Sentinel",
+  },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  openGraph: {
+    title: "Sentinel — Field Drug Testing Companion",
+    description: "AI-assisted presumptive field drug testing with tamper-evident records.",
+    type: "website",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#3d2a5c",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -39,6 +68,7 @@ export default function RootLayout({
       >
         {children}
         <SonnerToaster richColors position="top-right" />
+        <RegisterSW />
       </body>
     </html>
   );

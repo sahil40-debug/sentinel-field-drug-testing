@@ -133,6 +133,9 @@ export function ResultStep() {
             <Badge variant="outline" className="rounded-full">Image: {result.image_quality}</Badge>
             <Badge variant="outline" className="rounded-full">Ref card: {result.reference_card_detected ? 'detected' : 'not detected'}</Badge>
             <Badge variant="outline" className="rounded-full">Reaction area: {result.reaction_area_detected ? 'detected' : 'not detected'}</Badge>
+            {result.manual_override_used && (
+              <Badge variant="outline" className="rounded-full border-primary/40 text-primary bg-primary/5">Manual colour override used</Badge>
+            )}
           </div>
           <div className="pt-2"><PresumptiveNotice /></div>
         </CardContent>

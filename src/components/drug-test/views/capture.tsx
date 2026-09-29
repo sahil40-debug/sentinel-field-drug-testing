@@ -10,13 +10,15 @@ import { captureLocation, formatLocation, isGeolocationAvailable, type GeoLocati
 import { toast } from 'sonner'
 import {
   Camera, Upload, RefreshCw, ArrowRight, CheckCircle2, XCircle, Loader2,
-  ArrowLeft, MapPin, LocateFixed,
+  ArrowLeft, MapPin, LocateFixed, Palette,
 } from 'lucide-react'
 
 export function CaptureStep() {
   const {
     selectedDrug, capturedImage, setCapturedImage, setView, setAnalysing, setAnalysis,
     location, setLocation,
+    manualReferenceHex, setManualReferenceHex,
+    manualReactionHex, setManualReactionHex,
   } = useApp()
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -133,6 +135,8 @@ export function CaptureStep() {
         body: JSON.stringify({
           imageDataUrl: capturedImage,
           drugProfileId: selectedDrug.id,
+          manualReferenceHex: manualReferenceHex || null,
+          manualReactionHex: manualReactionHex || null,
         }),
       })
       const d = await res.json()
@@ -311,6 +315,46 @@ export function CaptureStep() {
             </CardContent>
           </Card>
 
+          {/* Manual colour override — used when the photo didn't capture colours clearly */}
+          <Card className="card-soft">
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Palette className="h-4 w-4 text-primary" />
+                <span className="display-eyebrow m-0">Manual colour override</span>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                If the photo didn&apos;t capture the colours clearly (bad light, cheap camera, glare),
+                pick the colours you see on the ground so the analysis can use them.
+              </p>
+
+              <ColourPickerRow
+                label="Reference card colour"
+                hint="The colour of the printed reference card in-frame"
+                value={manualReferenceHex}
+                onChange={setManualReferenceHex}
+                suggested={selectedDrug.expectedHex}
+              />
+              <ColourPickerRow
+                label="Reaction colour"
+                hint="The colour the reaction area changed to"
+                value={manualReactionHex}
+                onChange={setManualReactionHex}
+                suggested={selectedDrug.expectedHex}
+              />
+
+              {(manualReferenceHex || manualReactionHex) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="btn-pill gap-1.5 w-full text-xs"
+                  onClick={() => { setManualReferenceHex(null); setManualReactionHex(null) }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> Clear overrides
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="card-soft bg-accent/20">
             <CardContent className="p-5 space-y-2">
               <div className="display-eyebrow">Tip</div>
@@ -321,6 +365,55 @@ export function CaptureStep() {
           </Card>
         </div>
       </div>
+    </div>
+  )
+}
+
+function ColourPickerRow({
+  label,
+  hint,
+  value,
+  onChange,
+  suggested,
+}: {
+  label: string
+  hint: string
+  value: string | null
+  onChange: (h: string | null) => void
+  suggested: string
+}) {
+  const useSuggested = () => onChange(suggested)
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{label}</div>
+          <div className="text-xs text-muted-foreground">{hint}</div>
+        </div>
+        <label className="relative inline-flex items-center gap-2 cursor-pointer shrink-0">
+          {value && (
+            <span className="text-xs font-mono text-muted-foreground uppercase">{value}</span>
+          )}
+          <span
+            className="h-9 w-9 rounded-xl border border-black/10 shadow-[inset_0_0_0_1px_oklch(1_0_0/0.4)] grid place-items-center overflow-hidden relative"
+            style={{ backgroundColor: value ?? 'transparent' }}
+          >
+            {!value && <Palette className="h-4 w-4 text-muted-foreground/50" />}
+            <input
+              type="color"
+              value={value ?? '#888888'}
+              onChange={(e) => onChange(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              aria-label={label}
+            />
+          </span>
+        </label>
+      </div>
+      {!value && (
+        <button onClick={useSuggested} className="text-xs text-primary hover:underline">
+          Use expected colour ({suggested})
+        </button>
+      )}
     </div>
   )
 }
