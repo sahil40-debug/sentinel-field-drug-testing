@@ -153,11 +153,13 @@
     @apply text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground;
   }
   .display-heading {
-    @apply font-serif-display font-semibold tracking-tight;
+    font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
+    @apply font-semibold tracking-tight;
     letter-spacing: -0.02em;
   }
   .card-soft {
-    @apply rounded-2xl border border-border/70 bg-card/95 shadow-[0_10px_40px_-12px_oklch(0.4_0.08_290/0.18)] backdrop-blur-sm;
+    @apply rounded-2xl border border-border/70 bg-card/95 backdrop-blur-sm;
+    box-shadow: 0 10px 40px -12px oklch(0.4 0.08 290 / 0.18);
   }
   .pill {
     @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium;
