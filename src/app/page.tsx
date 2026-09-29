@@ -1,31 +1,39 @@
 'use client'
 
+import { useApp } from '@/lib/store'
+import { AppShell } from '@/components/drug-test/app-shell'
+import { LoginView } from '@/components/drug-test/views/login'
+import { DashboardView } from '@/components/drug-test/views/dashboard'
+import { NewTestView } from '@/components/drug-test/views/new-test'
+import { HistoryView } from '@/components/drug-test/views/history'
+import { RecordDetailView } from '@/components/drug-test/views/record-detail'
+import { VerificationView } from '@/components/drug-test/views/verification'
+
 export default function Home() {
-  return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      gap: '2rem',
-      padding: '1rem'
-    }}>
-      <div style={{
-        position: 'relative',
-        width: '6rem',
-        height: '6rem'
-      }}>
-        <img
-          src="/logo.svg"
-          alt="Z.ai Logo"
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain'
-          }}
-        />
-      </div>
-    </div>
-  )
+  const { authed, view } = useApp()
+
+  if (!authed) return <LoginView />
+
+  let body: React.ReactNode
+  switch (view) {
+    case 'dashboard':
+      body = <DashboardView />
+      break
+    case 'new-test':
+      body = <NewTestView />
+      break
+    case 'history':
+      body = <HistoryView />
+      break
+    case 'record-detail':
+      body = <RecordDetailView />
+      break
+    case 'verification':
+      body = <VerificationView />
+      break
+    default:
+      body = <DashboardView />
+  }
+
+  return <AppShell>{body}</AppShell>
 }

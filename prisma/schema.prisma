@@ -1,8 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Prisma schema for Digital Companion for Field Drug Testing
+// SIH 2026 — PS-231
 
 generator client {
   provider = "prisma-client-js"
@@ -13,20 +10,50 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+/// Catalog of substances/target-drugs and their presumptive colour-test profiles.
+model DrugProfile {
+  id            String   @id // stable slug, e.g. "cocaine-scott"
+  target        String   // canonical target substance, e.g. "Cocaine"
+  aliases       String   // JSON array string, e.g. ["cocaine","coke"]
+  testMethod    String   // e.g. "Scott test (modified cobalt thiocyanate)"
+  expectedColor String   // human readable, e.g. "Blue"
+  expectedHex   String   // best-effort representative hex, e.g. "#1E5BB8"
+  interpretation String  // what the reaction means
+  source        String   // literature source
+  createdAt     DateTime @default(now())
+
+  records TestRecord[]
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+/// A finalized, tamper-evident test record.
+model TestRecord {
+  id             String   @id @default(cuid())
+  recordNo       String   @unique // human readable, e.g. TEST-2026-0001
+  drugProfileId  String
+  drugProfile    DrugProfile @relation(fields: [drugProfileId], references: [id])
+
+  // Operator
+  operatorId     String   @default("OFFICER-01")
+
+  // Image evidence (base64 data URL)
+  imageDataUrl   String
+  imageHash      String   // SHA-256 of the raw image bytes
+
+  // AI analysis result (stored as JSON string)
+  analysisJson   String
+
+  // Denormalised key fields for fast querying / display
+  classification String   // "Positive" | "Negative" | "Inconclusive"
+  confidence     Float    // 0..1
+  reason         String
+
+  // Integrity
+  recordHash     String   // SHA-256 over canonical record (excludes recordHash itself)
+  signature      String?  // optional RSA/Ed25519 signature (prototype: empty)
+
+  // Audit
+  createdAt      DateTime @default(now())
+
+  @@index([classification])
+  @@index([createdAt])
 }
