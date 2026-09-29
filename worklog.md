@@ -127,3 +127,35 @@ Self-verification (Agent Browser, all passed):
 
 Stage Summary:
 - All 5 feedback items shipped and verified. 33 drug profiles. GPS-stamped records. "Notes" replaces "caveats". Premium lavender editorial UI. New-test and verification no longer stuck. Tamper-evidence extended to cover location fields.
+
+---
+Task ID: 12
+Agent: orchestrator (main)
+Task: (1) manual colour override, (2) verify PS-231 checklist, (3) README + GitHub, (4) PWA + deploy.
+
+Work Log:
+1. Manual colour override (src/lib/store.ts, ai-schema.ts, ai-analyze route, capture.tsx, result.tsx):
+   - store: added manualReferenceHex/manualReactionHex state + resetFlow clears them.
+   - ai-schema: AnalysisContext gains optional manualReferenceHex/manualReactionHex; prompt now instructs the model to treat officer-supplied overrides as authoritative and set manual_override_used; AiAnalysisResultSchema gains manual_override_used (z.boolean().default(false)); normaliseAnalysis handles legacy.
+   - /api/ai-analyze: accepts manualReferenceHex + manualReactionHex, normalises to #rrggbb, passes to context; post-processes result to stamp observed_colour/expected_colour with the override values when supplied.
+   - capture.tsx: new "Manual colour override" card with two native <input type=color> rows (reference card + reaction), "Use expected colour" shortcut, "Clear overrides" button.
+   - result.tsx: shows "Manual colour override used" badge when result.manual_override_used.
+   - Verified end-to-end in browser: set reaction override #1E5BB8 -> VLM returned POSITIVE, reason cited "A manual reaction-color override was used as the authoritative observed color", badge shown.
+2. Checklist verification (all present, confirmed via grep):
+   - Camera capture w/ reference card in-frame: capture.tsx getUserMedia + on-screen instruction.
+   - Auto-classify Positive/Negative/Inconclusive: AiAnalysisResultSchema z.enum.
+   - Tamper-evident record: createdAt (timestamp), latitude/longitude/locationLabel (GPS), operatorId, imageHash (SHA-256 of image bytes), recordHash (SHA-256 over canonical sorted-key payload incl. location).
+   - Searchable log: /api/records?q=&classification= + History UI.
+3. README.md: comprehensive (project overview, disclaimer, 33 drug profiles table, AI JSON schema, tamper-evidence, tech stack, project structure, getting started, PWA, deployment to Vercel/Netlify/Render, API reference, security notes, sources).
+   - Git: committed as f3f5e36 "feat: manual colour override + PWA + README". Remote origin set to https://github.com/sahil40-debug/Drug-testing-009.git. Push FAILED — no GitHub credentials / SSH keys in sandbox. User must push locally.
+4. PWA:
+   - public/manifest.json (name, icons, theme_color #3d2a5c, display standalone, shortcuts).
+   - public/sw.js (app-shell cache, network-first navigation, cache-first static, network-only API).
+   - src/components/pwa/register-sw.tsx (registers SW in production only).
+   - layout.tsx: metadata.manifest, icons, appleWebApp, viewport.themeColor; RegisterSW mounted.
+   - Generated 512/192/apple-touch icons via z-ai image gen.
+   - Verified in browser: manifest, theme-color, apple-touch-icon all linked; /manifest.json /sw.js /icon-512.png all 200.
+   - Deployment documented in README (Vercel recommended; swap SQLite->Postgres for prod).
+
+Stage Summary:
+- Manual colour override shipped + verified. All 4 PS-231 checklist features confirmed present. README written. PWA configured + verified. Commit f3f5e36 ready. GitHub push pending user credentials (command provided). Deploy path documented.
