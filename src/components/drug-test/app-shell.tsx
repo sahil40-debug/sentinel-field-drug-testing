@@ -89,7 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 variant={active ? 'default' : 'ghost'}
                 size="sm"
                 onClick={onClick}
-                className={cn('btn-pill gap-1.5 shrink-0', active && 'shadow-sm')}
+                className={cn('btn-pill gap-1.5 shrink-0 h-11 min-w-[44px]', active && 'shadow-sm')}
               >
                 <Icon className="h-4 w-4" />
                 {item.label}
