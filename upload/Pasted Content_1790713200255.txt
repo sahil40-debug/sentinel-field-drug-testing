@@ -1,0 +1,1840 @@
+prd.md
+# Product Requirements Document (PRD)
+
+# Digital Companion for Field Drug Testing
+
+## 1. Product Overview
+
+### Project
+
+Digital Companion for Field Drug Testing
+
+### Problem Statement
+
+Smart India Hackathon 2026 — PS-231
+
+### Purpose
+
+The Digital Companion for Field Drug Testing is a software system designed to assist officers during presumptive field drug testing using existing colour-change testing kits.
+
+The system does not replace the physical testing kit or laboratory confirmation.
+
+Instead, it provides a digital workflow around the existing testing process:
+
+1. Select the substance/test being performed.
+2. Load the corresponding reference colour information.
+3. Capture or upload an image of the completed field test.
+4. Verify image quality.
+5. Detect the reference colour card.
+6. Detect the reaction/test area.
+7. Calibrate colour measurements using the reference card.
+8. Compare the reaction against the expected reference.
+9. Produce a Positive, Negative, or Inconclusive result.
+10. Store the complete test record.
+11. Generate a tamper-evident record using hashing.
+12. Allow later verification and review.
+
+The result is intended as a presumptive field-testing result and not as laboratory confirmation.
+
+---
+
+# 2. Goals
+
+## Primary Goals
+
+- Digitize the field drug-testing workflow.
+- Reduce dependence on manual visual interpretation.
+- Standardize colour analysis.
+- Account for lighting differences using a reference colour card.
+- Associate every analysis with the correct drug/test definition.
+- Produce deterministic and explainable classification.
+- Maintain a searchable digital history of tests.
+- Preserve evidence associated with each test.
+- Detect later modification of stored test records.
+- Provide a verification mechanism for stored records.
+
+## Secondary Goals
+
+- Provide a simple workflow for field officers.
+- Reduce manual record-keeping.
+- Provide supervisors with access to historical test results.
+- Make the system modular enough for additional tests and substances to be added later.
+
+---
+
+# 3. Non-Goals
+
+The system will NOT:
+
+- Replace laboratory confirmation.
+- Perform chemical identification directly.
+- Claim that image analysis alone can identify an unknown substance.
+- Automatically determine an unknown drug without a selected test definition.
+- Replace the physical field-testing kit.
+- Provide forensic-grade conclusions from a photograph alone.
+- Depend on cloud AI services for the core classification logic.
+- Require new physical hardware for the prototype.
+
+---
+
+# 4. Target Users
+
+## 4.1 Field Officer
+
+The primary operational user.
+
+Responsibilities:
+
+- Select the test/substance.
+- Perform the physical field test.
+- Capture the test image.
+- Review image-quality feedback.
+- Submit the image for analysis.
+- Review the result.
+- Save the test record.
+
+## 4.2 Supervisor / Reviewer
+
+Responsibilities:
+
+- Review previous tests.
+- Inspect stored evidence.
+- Verify record integrity.
+- Review classification and analysis information.
+
+---
+
+# 5. Core User Workflow
+
+```text
+Login
+  ↓
+Dashboard
+  ↓
+New Field Test
+  ↓
+Select Drug / Test
+  ↓
+Load Test Definition
+  ↓
+Perform Physical Field Test
+  ↓
+Capture / Upload Image
+  ↓
+Image Quality Analysis
+  ↓
+Reference Card Detection
+  ↓
+Reaction Area Detection
+  ↓
+Colour Calibration
+  ↓
+Colour Analysis
+  ↓
+Classification
+  ↓
+Result Screen
+  ↓
+Save Test Record
+  ↓
+Generate Hash
+  ↓
+Store Record
+  ↓
+Test History
+  ↓
+Verification
+6. Test Definition / Drug Database
+
+The classification system must know which test is being performed.
+
+A photograph by itself is insufficient because the expected colour reaction depends on the selected test.
+
+Therefore, the application maintains a structured test-definition database.
+
+For the current prototype, the database is stored as JSON.
+
+Each test definition contains information such as:
+
+Test ID
+Drug/substance name
+Alternative/common names
+Test name
+Test category
+Reference colour
+Reference shade
+Reference colour HEX value
+Expected reaction information
+Detection notes
+Classification configuration
+Status
+
+Example:
+
+{
+  "test_id": "TEST-001",
+  "substance": "Example Substance",
+  "test_name": "Example Colour Test",
+  "category": "Field Presumptive Test",
+  "reference_colour": {
+    "group": "Yellow",
+    "shade": "Shade 1",
+    "hex": "#F0DC78"
+  },
+  "classification": {
+    "positive_distance": 45,
+    "negative_distance": 25,
+    "positive_hue_tolerance": 12,
+    "negative_hue_tolerance": 8
+  }
+}
+
+The database is designed so additional test definitions can be added without modifying the classification engine.
+
+7. Test Selection
+
+Before image analysis begins, the officer must select the test/substance.
+
+The UI should provide:
+
+Search field
+Test/substance list
+Test category
+Test name
+Selection confirmation
+
+Example:
+
+Search test or substance...
+
+[ Cocaine ]
+[ Heroin ]
+[ Cannabis ]
+[ Amphetamine ]
+...
+
+After selection, the system loads the corresponding test definition.
+
+The selected definition is passed to the analysis pipeline.
+
+8. Image Capture
+
+The application supports:
+
+Browser camera
+Image capture
+Retake
+Existing image upload
+
+The captured image is sent to the backend as Base64 data.
+
+The capture interface should clearly indicate:
+
+Camera status
+Image quality
+Capture state
+Retake option
+Upload option
+Continue/analyze action
+9. Image Quality Analysis
+
+Before colour analysis, the image is checked for basic usability.
+
+Current implementation includes image-quality analysis using OpenCV.
+
+The system should detect conditions that could make colour analysis unreliable.
+
+Examples:
+
+Excessive blur
+Poor image quality
+Insufficient usable image information
+
+Poor-quality images should not silently continue through the analysis pipeline.
+
+10. Reference Card Detection
+
+The physical test image contains a reference colour card.
+
+The system detects the reference card using:
+
+Colour similarity
+Shape
+Size
+Rectangularity
+Colour consistency
+Boundary evidence
+Multi-region verification
+
+The current implementation uses a three-stage verification process.
+
+Attempt 1
+Colour
++
+Shape
++
+Size
++
+Colour consistency
+Attempt 2
+Attempt 1
++
+Boundary evidence
+Attempt 3
+Attempt 2
++
+Multi-region colour verification
+
+Only a sufficiently verified reference card is accepted.
+
+11. Reaction Area Detection
+
+The system identifies the reaction/test area separately from the reference card.
+
+The reaction area provides:
+
+Bounding box
+Detection confidence
+Colour uniformity
+Measured colour
+
+The reaction area must be successfully detected before classification.
+
+12. Colour Calibration
+
+The reference card is used to compensate for differences between:
+
+Expected reference colour
+Colour actually observed in the image
+
+The system calculates RGB correction factors.
+
+Conceptually:
+
+Expected Reference RGB
+        ↓
+Measured Reference RGB
+        ↓
+RGB Correction Factors
+        ↓
+Reaction RGB
+        ↓
+Calibrated Reaction RGB
+
+This allows the system to reduce the effect of lighting/camera differences.
+
+13. Colour Analysis
+
+The current prototype measures:
+
+Original RGB
+Original HSV
+Reference RGB
+Reference HSV
+RGB distance
+Calibrated RGB
+Calibrated HSV
+Calibrated RGB distance
+
+The system uses the calibrated values for classification.
+
+14. Classification
+
+The current classification engine produces:
+
+Positive
+Negative
+Inconclusive
+
+The classifier uses deterministic rules based on:
+
+Calibrated RGB distance
+Hue difference
+Reaction confidence
+Reaction uniformity
+
+Current prototype thresholds:
+
+Positive RGB distance:
+45+
+
+Negative RGB distance:
+25 or below
+
+Positive hue tolerance:
+12
+
+Negative hue tolerance:
+8
+
+These values are prototype thresholds and must be validated against appropriate test samples before real-world deployment.
+
+15. Classification Safety
+
+The system should return Inconclusive when:
+
+Reaction information is unavailable.
+Reference information is unavailable.
+Reaction detection confidence is too low.
+Reaction colour is insufficiently uniform.
+Colour measurements fall between positive and negative boundaries.
+
+The system must not force a binary answer when the available evidence is insufficient.
+
+16. Result Screen
+
+The result screen should display:
+
+Selected substance/test
+Test name
+Overall classification
+Confidence
+Reference colour
+Detected reaction colour
+Colour difference
+Image quality status
+Detection status
+Classification explanation
+
+Example:
+
+TEST RESULT
+
+Substance
+Example Substance
+
+Test
+Example Colour Test
+
+Result
+INCONCLUSIVE
+
+Confidence
+50%
+
+Colour Difference
+25.5
+
+Reason
+The observed colour change falls within
+the ambiguous range between clear positive
+and clear negative results.
+
+The result screen should clearly distinguish:
+
+Presumptive field result
+
+from:
+
+Laboratory confirmation
+17. Test Record
+
+Every completed analysis should produce a structured test record.
+
+The record should contain:
+
+Identification
+Record ID
+Test ID
+Substance
+Test name
+Analysis
+Classification
+Confidence
+Reason
+Reference colour
+Reaction colour
+Colour distance
+Detection confidence
+Uniformity
+Evidence
+Original image
+Image metadata where available
+Image hash
+Audit Information
+Timestamp
+Operator ID
+Record creation information
+Integrity
+Record hash
+Signature information when implemented
+18. Test History
+
+The application should provide a searchable test history.
+
+Users should be able to:
+
+View previous tests.
+Search records.
+Filter by substance.
+Filter by result.
+Open a test record.
+Review the stored analysis.
+Access evidence.
+Verify record integrity.
+19. Tamper-Evident Records
+
+After a test record is finalized, the system will calculate a cryptographic hash.
+
+The hash will be based on the relevant stored record/evidence.
+
+Conceptually:
+
+Test Data
+   +
+Analysis Data
+   +
+Image Hash
+   ↓
+Canonical Record
+   ↓
+Cryptographic Hash
+   ↓
+Stored Integrity Value
+
+If the stored information changes later, recalculating the hash should produce a different value.
+
+20. Digital Signature
+
+The final system should support cryptographic signing of finalized records.
+
+The intended model is:
+
+Record
+  ↓
+Hash
+  ↓
+Private Key
+  ↓
+Digital Signature
+
+Verification:
+
+Stored Record
+  ↓
+Recalculate Hash
+  ↓
+Public Key
+  ↓
+Verify Signature
+
+A photograph of a handwritten signature is not considered a digital signature.
+
+21. Verification
+
+The verification page should allow a supervisor to check:
+
+Record identity
+Stored hash
+Recalculated hash
+Hash match/mismatch
+Digital signature status
+Verification timestamp
+
+Example:
+
+RECORD VERIFICATION
+
+Record ID: TEST-2026-0001
+
+Image Hash: MATCH
+Record Hash: MATCH
+Digital Signature: VALID
+
+Integrity Status:
+VERIFIED
+22. API Requirements
+POST /api/analyze
+
+Performs image quality and optional colour analysis.
+
+Request:
+
+{
+  "image_data": "...",
+  "reference_color": "Yellow",
+  "reference_shade": "Shade 1",
+  "reference_color_value": "#F0DC78"
+}
+
+Response contains:
+
+Image-quality result
+Colour-analysis result
+Reference detection
+Reaction detection
+Calibration
+Classification
+POST /api/optimize
+
+Optimizes an image before analysis when required.
+
+23. Current Technology
+Frontend
+React
+TypeScript
+Vite
+Tailwind CSS
+Backend
+Python
+FastAPI
+OpenCV
+NumPy
+Storage
+
+Current prototype:
+
+JSON-based test definitions
+Local development storage
+
+Planned:
+
+Database for test history
+Stored evidence
+Integrity metadata
+Development
+Git
+GitHub
+VS Code
+24. Current Status
+
+Completed:
+
+Frontend application structure
+Login
+Dashboard structure
+Sidebar/navigation
+Capture page
+Camera capture
+Retake
+Image upload
+Image quality analysis
+Backend API
+Reference colour detection
+Reaction-area detection
+Colour extraction
+RGB calibration
+Deterministic classification
+Classification tests
+Integrated colour-analysis test
+Initial test-definition concept
+
+Current classification pipeline has successfully passed the integrated synthetic test.
+
+25. Remaining Core Development
+
+Priority order:
+
+Finalize test-definition JSON/database.
+Connect test selection UI to analysis.
+Complete result screen.
+Create test-history storage.
+Create test-history UI.
+Add image hashing.
+Create finalized test-record structure.
+Add cryptographic signing.
+Create verification page.
+Connect the complete workflow.
+Test with realistic images.
+Fix remaining real-world detection issues.
+Final end-to-end testing.
+26. Success Criteria
+
+The prototype is considered functionally complete when an officer can:
+
+Select a test
+    ↓
+Capture/upload test image
+    ↓
+Receive quality feedback
+    ↓
+Run colour analysis
+    ↓
+Receive Positive/Negative/Inconclusive result
+    ↓
+Review result
+    ↓
+Save test
+    ↓
+Find test later
+    ↓
+Verify test integrity
+
+The system must preserve the distinction between a presumptive field result and laboratory confirmation.
+
+
+---
+
+# `architecture.md`
+
+```md
+# System Architecture
+
+# Digital Companion for Field Drug Testing
+
+## 1. Architecture Overview
+
+The system follows a modular client-server architecture.
+
+```text
+┌───────────────────────────────┐
+│           FRONTEND            │
+│       React + TypeScript      │
+│            Vite               │
+│          Tailwind CSS         │
+└───────────────┬───────────────┘
+                │
+                │ HTTP / JSON
+                │
+┌───────────────▼───────────────┐
+│            API                │
+│          FastAPI              │
+└───────────────┬───────────────┘
+                │
+        ┌───────┴────────┐
+        │                │
+        ▼                ▼
+ Image Processing   Test Definitions
+        │                │
+        ▼                ▼
+ OpenCV Analysis    JSON / Database
+        │
+        ▼
+ Colour Analysis
+        │
+        ▼
+ Classification
+        │
+        ▼
+ Test Record
+        │
+        ▼
+ Hash / Signature
+2. Design Principles
+Modular
+
+Each major operation is isolated.
+
+Backward Compatible
+
+New analysis features should not unnecessarily break existing APIs or frontend components.
+
+Deterministic
+
+The current classification engine uses explicit rules rather than an opaque AI model.
+
+Explainable
+
+The system should preserve the measurements that produced the result.
+
+Testable
+
+Each processing stage should be independently testable.
+
+Evidence-Oriented
+
+The final record should retain enough information for later review and integrity verification.
+
+3. Frontend Architecture
+frontend/
+│
+├── src/
+│
+├── components/
+│   ├── Capture/
+│   │   ├── CameraPreview.tsx
+│   │   └── ImageQualityPanel.tsx
+│   │
+│   └── Sidebar/
+│
+├── pages/
+│   ├── login.tsx
+│   ├── dashboard.tsx
+│   ├── capture.tsx
+│   ├── history.tsx
+│   └── verification.tsx
+│
+└── services/
+    └── API communication
+
+The frontend is responsible for:
+
+User interaction
+Test selection
+Camera handling
+Image upload
+Result presentation
+Test history
+Verification UI
+
+The frontend should not contain the core classification logic.
+
+4. Backend Architecture
+backend/
+│
+├── main.py
+│
+├── image_optimizer.py
+│
+├── analysis/
+│   ├── image_quality.py
+│   ├── color_analysis.py
+│   ├── reaction_analysis.py
+│   └── classification.py
+│
+├── data/
+│   └── test_definitions.json
+│
+├── records/
+│
+└── tests/
+5. Backend Responsibilities
+main.py
+
+Responsible for:
+
+FastAPI application
+API routes
+Request validation
+Connecting frontend requests to analysis modules
+
+It should remain relatively small.
+
+6. Image Quality Module
+
+File:
+
+analysis/image_quality.py
+
+Responsibilities:
+
+Decode/inspect image
+Evaluate image quality
+Detect unusable images
+Provide quality metrics
+
+It should not perform drug classification.
+
+7. Reference / Colour Analysis Module
+
+File:
+
+analysis/color_analysis.py
+
+Responsibilities:
+
+Decode Base64 images
+Convert colour spaces
+Detect reference card
+Verify reference card
+Measure reference colour
+Calculate RGB calibration
+Apply calibration
+Coordinate reaction analysis
+Pass calibrated information to classification
+
+The module acts as the main colour-analysis pipeline.
+
+8. Reaction Analysis Module
+
+File:
+
+analysis/reaction_analysis.py
+
+Responsibilities:
+
+Detect reaction/test area
+Exclude the reference card
+Calculate reaction bounding box
+Calculate reaction confidence
+Calculate colour uniformity
+Extract reaction colour
+
+This module should remain independent from final classification.
+
+9. Classification Module
+
+File:
+
+analysis/classification.py
+
+Responsibilities:
+
+Compare calibrated reaction measurements against test configuration.
+Calculate classification evidence.
+Produce:
+Positive
+Negative
+Inconclusive
+
+It should not:
+
+Access the camera.
+Decode images.
+Detect physical objects.
+Store records.
+Handle frontend UI.
+10. Test Definition Layer
+
+The test definition layer connects the selected substance/test to the analysis system.
+
+Example:
+
+User selects test
+      ↓
+test_id
+      ↓
+Load test definition
+      ↓
+Reference colour
+      ↓
+Classification parameters
+      ↓
+Colour analysis
+      ↓
+Classification
+
+This is essential because the image cannot be interpreted correctly without knowing which test is being performed.
+
+11. Test Definition JSON
+
+Example structure:
+
+{
+  "tests": [
+    {
+      "test_id": "TEST-001",
+      "substance": "Example Substance",
+      "test_name": "Example Test",
+      "category": "Presumptive",
+      "reference": {
+        "color_group": "Yellow",
+        "shade": "Shade 1",
+        "hex": "#F0DC78"
+      },
+      "classification": {
+        "positive_distance": 45,
+        "negative_distance": 25,
+        "positive_hue_tolerance": 12,
+        "negative_hue_tolerance": 8
+      }
+    }
+  ]
+}
+
+The classification engine receives the relevant configuration instead of hardcoding every drug/test into Python.
+
+12. Analysis Pipeline
+Image
+  ↓
+Decode
+  ↓
+Image Quality
+  ↓
+Selected Test Definition
+  ↓
+Reference Card Detection
+  ↓
+Reference Colour Measurement
+  ↓
+Reaction Area Detection
+  ↓
+Reaction Colour Extraction
+  ↓
+RGB Calibration
+  ↓
+HSV / RGB Comparison
+  ↓
+Classification
+  ↓
+Result
+13. Reference Detection Pipeline
+Expected Reference Colour
+          ↓
+HSV Conversion
+          ↓
+Colour Mask
+          ↓
+Morphological Cleanup
+          ↓
+Contours
+          ↓
+Shape Filtering
+          ↓
+Colour Consistency
+          ↓
+Boundary Verification
+          ↓
+Multi-region Verification
+          ↓
+Verified Reference Card
+14. Reaction Detection Pipeline
+Captured Image
+      ↓
+Reference Bounding Box
+      ↓
+Candidate Detection
+      ↓
+Reference Exclusion
+      ↓
+Rectangle / Area Analysis
+      ↓
+Reaction Candidate
+      ↓
+Confidence
+      ↓
+Uniformity
+      ↓
+Reaction Colour
+15. Calibration Pipeline
+Expected Reference RGB
+        +
+Measured Reference RGB
+        ↓
+Correction Factors
+        ↓
+Reaction RGB
+        ↓
+Calibrated Reaction RGB
+
+Example:
+
+Expected:
+(240, 220, 120)
+
+Measured:
+(240, 220, 120)
+
+Correction:
+(1.0, 1.0, 1.0)
+16. Classification Architecture
+
+The current classifier combines:
+
+RGB Distance
++
+Hue Difference
++
+Reaction Confidence
++
+Reaction Uniformity
+
+Decision:
+
+Strong similarity
+      ↓
+Negative
+
+Strong measurable change
+      ↓
+Positive
+
+Ambiguous evidence
+      ↓
+Inconclusive
+17. Result Object
+
+The analysis pipeline should return structured information.
+
+{
+  "classification": "Inconclusive",
+  "confidence": 0.5,
+  "reason": "...",
+  "evidence": {
+    "rgb_distance": 25.5,
+    "hue_difference": 1,
+    "reaction_uniformity": 0.961
+  }
+}
+
+This structure should remain stable because the frontend result screen depends on it.
+
+18. Test Record Architecture
+
+A finalized test record should contain:
+
+Record
+│
+├── Identity
+│   ├── record_id
+│   ├── test_id
+│   ├── substance
+│   └── timestamp
+│
+├── Operator
+│   └── operator_id
+│
+├── Image
+│   ├── image
+│   └── image_hash
+│
+├── Reference
+│   ├── expected_rgb
+│   ├── measured_rgb
+│   └── bounding_box
+│
+├── Reaction
+│   ├── rgb
+│   ├── hsv
+│   ├── confidence
+│   └── uniformity
+│
+├── Classification
+│   ├── result
+│   ├── confidence
+│   └── reason
+│
+└── Integrity
+    ├── record_hash
+    └── digital_signature
+19. Storage Architecture
+Current
+
+Test definitions:
+
+JSON
+
+Development test outputs:
+
+Local files
+Final Prototype
+Frontend
+    ↓
+FastAPI
+    ↓
+Database
+    ├── Test Definitions
+    ├── Test Records
+    ├── Operators
+    └── Integrity Metadata
+
+Evidence Storage
+    └── Test Images
+
+The exact database technology can remain simple for the prototype.
+
+20. Hashing Architecture
+Test Record
+    ↓
+Canonical Serialization
+    ↓
+SHA-256
+    ↓
+Record Hash
+
+Image:
+
+Original Image
+    ↓
+SHA-256
+    ↓
+Image Hash
+
+The hashes become part of the finalized record.
+
+21. Digital Signature Architecture
+Canonical Record
+       ↓
+Hash
+       ↓
+Private Key
+       ↓
+Digital Signature
+       ↓
+Stored Record
+
+Verification:
+
+Stored Record
+       ↓
+Recalculate Hash
+       ↓
+Public Key
+       ↓
+Signature Verification
+       ↓
+VALID / INVALID
+22. API Flow
+Frontend
+   │
+   │ POST /api/analyze
+   ▼
+FastAPI
+   │
+   ├── Image Quality
+   │
+   └── Colour Analysis
+          │
+          ├── Reference Detection
+          ├── Reaction Detection
+          ├── Calibration
+          └── Classification
+                 │
+                 ▼
+              Result
+                 │
+                 ▼
+              Frontend
+23. Error Handling
+
+Each stage should provide a clear failure stage.
+
+Examples:
+
+image_decode
+reference_validation
+reference_detection
+reference_measurement
+reaction_detection
+reaction_measurement
+classification
+
+The frontend can then display an appropriate message instead of a generic failure.
+
+24. Security Architecture
+
+Security-sensitive operations should remain on the backend.
+
+The frontend should not be trusted to generate:
+
+Final hashes
+Digital signatures
+Integrity status
+
+The backend should generate and verify these values.
+
+25. Deployment Architecture
+
+Prototype:
+
+Browser
+  │
+  ├── localhost:5173
+  │
+  ▼
+React/Vite
+
+FastAPI
+  │
+  └── localhost:8000
+
+Production architecture can later separate:
+
+Frontend
+    ↓
+HTTPS API
+    ↓
+Backend
+    ↓
+Database
+    ↓
+Evidence Storage
+26. Architectural Rule
+
+New functionality should be added as isolated modules whenever possible.
+
+For example:
+
+New test
+→ Add JSON definition
+
+New classification rule
+→ Update classification configuration
+
+New UI
+→ Add frontend component/page
+
+New record field
+→ Extend record schema
+
+New verification method
+→ Add integrity module
+
+Existing analysis modules should not be unnecessarily rewritten.
+
+
+---
+
+# `design.md`
+
+```md
+# System Design Document
+
+# Digital Companion for Field Drug Testing
+
+## 1. Design Objective
+
+The interface should make the field-testing process simple enough for an officer to follow without needing to understand the underlying computer-vision or colour-analysis system.
+
+The design should prioritize:
+
+- Clear workflow
+- Minimal unnecessary interaction
+- Strong result visibility
+- Explainable analysis
+- Error recovery
+- Evidence visibility
+- Consistent visual hierarchy
+
+---
+
+# 2. Application Structure
+
+Main application sections:
+
+```text
+Login
+│
+├── Dashboard
+│
+├── New Test
+│
+│   ├── Select Test
+│   ├── Capture
+│   ├── Analysis
+│   └── Result
+│
+├── Test History
+│
+└── Verification
+3. Navigation
+
+The sidebar contains:
+
+Dashboard
+New Test
+Test History
+Verification
+Logout
+
+The navigation should remain persistent after login.
+
+The active section should be visually distinguishable.
+
+4. Dashboard Design
+
+The dashboard should provide a quick operational overview.
+
+Suggested sections:
+
+Dashboard
+
+┌────────────────┐ ┌────────────────┐ ┌────────────────┐
+│ Total Tests    │ │ Positive       │ │ Inconclusive   │
+└────────────────┘ └────────────────┘ └────────────────┘
+
+Recent Tests
+
+Record ID
+Test
+Result
+Date
+Status
+
+The dashboard should not contain unnecessary analytics in the first version.
+
+5. Test Selection Design
+
+The New Test workflow begins with selecting the test.
+
+NEW FIELD TEST
+
+Search test or substance
+[________________________]
+
+Available Tests
+
+┌─────────────────────────────────┐
+│ Substance Name                  │
+│ Test Name                       │
+│ Category                        │
+└─────────────────────────────────┘
+
+Search should work across:
+
+Substance name
+Common name
+Test name
+Test ID
+6. Selected Test Confirmation
+
+After selection:
+
+SELECTED TEST
+
+Substance:
+Example Substance
+
+Test:
+Example Colour Test
+
+Reference:
+Yellow — Shade 1
+
+[Continue to Capture]
+
+This prevents the officer from unknowingly analyzing an image against the wrong test definition.
+
+7. Capture Screen
+
+The capture page contains:
+
+┌─────────────────────────────────────────────┐
+│                                             │
+│              CAMERA PREVIEW                │
+│                                             │
+│                                             │
+└─────────────────────────────────────────────┘
+
+Image Quality
+● Good
+
+[ Capture Image ]
+
+or
+
+[ Upload Image ]
+
+After capture:
+
+┌─────────────────────────────────────────────┐
+│             CAPTURED IMAGE                 │
+└─────────────────────────────────────────────┘
+
+[ Retake ]     [ Analyze ]
+8. Image Quality Feedback
+
+Image-quality information should be visible without overwhelming the officer.
+
+Example:
+
+Image Quality
+
+✓ Image detected
+✓ Resolution acceptable
+✓ Sharpness acceptable
+
+Ready for analysis
+
+For failure:
+
+Image Quality
+
+✕ Image is too blurry.
+
+Please capture another image.
+
+[ Retake ]
+9. Analysis State
+
+During processing:
+
+ANALYZING TEST
+
+✓ Image received
+✓ Image quality checked
+✓ Reference card detected
+● Detecting reaction area
+○ Calibrating colour
+○ Classifying result
+
+The user should not be required to interact during this process.
+
+10. Result Screen
+
+The result screen is one of the most important screens.
+
+It should clearly show the classification.
+
+Example:
+
+TEST RESULT
+
+┌─────────────────────────────────┐
+│                                 │
+│          INCONCLUSIVE           │
+│                                 │
+│           Confidence: 50%       │
+│                                 │
+└─────────────────────────────────┘
+
+Test
+Example Colour Test
+
+Substance
+Example Substance
+
+Colour Difference
+25.5
+
+Reaction Uniformity
+96.1%
+
+Reason
+The observed colour change falls within
+the ambiguous range between clear positive
+and clear negative results.
+11. Result Colour States
+
+The interface should visually distinguish:
+
+Positive
+Negative
+Inconclusive
+
+However, colour must not be the only indicator.
+
+Every result should also contain text.
+
+For example:
+
+INCONCLUSIVE
+
+rather than relying only on a yellow/orange visual.
+
+This improves accessibility and reduces ambiguity.
+
+12. Evidence Section
+
+The result screen should provide an expandable evidence section.
+
+Analysis Evidence
+
+Reference Colour
+RGB: 240, 220, 120
+
+Reaction Colour
+RGB: 220, 205, 115
+
+RGB Distance
+25.5
+
+Hue Difference
+1
+
+Reaction Uniformity
+96.1%
+
+This allows supervisors to understand why the system produced the result.
+
+13. Reference Card Visualization
+
+Where possible, the result page should show the analyzed image with detected regions.
+
+Conceptually:
+
+┌────────────────────────────────────┐
+│                                    │
+│   [REFERENCE]       [REACTION]    │
+│                                    │
+└────────────────────────────────────┘
+
+The detected bounding boxes can be overlaid on the image.
+
+14. Save Result
+
+After reviewing the result:
+
+[ Save Test Record ]
+
+The user should be warned if the record is about to be finalized.
+
+Example:
+
+Finalize Test Record?
+
+Once finalized, the record will be
+stored and its integrity information
+will be generated.
+
+[ Cancel ] [ Finalize ]
+15. Test History
+
+The history screen should prioritize search and filtering.
+
+TEST HISTORY
+
+Search
+[________________________]
+
+Filter:
+[All Results ▼]
+
+┌────────────┬──────────────┬────────────┬────────────┐
+│ Record ID  │ Substance    │ Result     │ Date       │
+├────────────┼──────────────┼────────────┼────────────┤
+│ TEST-001   │ Example      │ Negative   │ 29 Sep     │
+│ TEST-002   │ Example      │ Positive   │ 29 Sep     │
+│ TEST-003   │ Example      │ Inconclusive│ 29 Sep    │
+└────────────┴──────────────┴────────────┴────────────┘
+16. Test Record Detail
+
+Selecting a record opens:
+
+TEST RECORD
+
+Record ID
+TEST-2026-0001
+
+Test
+Example Colour Test
+
+Substance
+Example Substance
+
+Result
+Negative
+
+Confidence
+75.7%
+
+Timestamp
+29 Sep 2026
+
+Operator
+Operator ID
+
+Then:
+
+Analysis
+Evidence
+Integrity
+
+can be displayed in sections.
+
+17. Integrity Section
+
+Example:
+
+RECORD INTEGRITY
+
+Image Hash
+a81f...93bd
+
+Record Hash
+7b12...4a8e
+
+Digital Signature
+Valid
+
+Integrity Status
+✓ VERIFIED
+
+If verification fails:
+
+Integrity Status
+✕ VERIFICATION FAILED
+
+The stored record does not match
+the integrity information.
+18. Verification Page
+
+The verification page should support:
+
+VERIFY RECORD
+
+Record ID
+[________________]
+
+[ Verify ]
+
+Result:
+
+VERIFICATION RESULT
+
+Record: TEST-2026-0001
+
+Image Hash        ✓ MATCH
+Record Hash       ✓ MATCH
+Digital Signature ✓ VALID
+
+STATUS
+VERIFIED
+19. Error Design
+
+Errors should identify:
+
+What failed.
+Why it failed when known.
+What the user should do next.
+
+Bad:
+
+Analysis failed.
+
+Better:
+
+Reference card could not be detected.
+
+Make sure the reference colour card is
+visible and capture the image again.
+
+[ Retake ]
+20. Inconclusive Result Design
+
+An inconclusive result must not look like a system failure.
+
+It is a legitimate analysis result.
+
+Example:
+
+INCONCLUSIVE
+
+The available colour evidence does not
+clearly fall within the positive or
+negative range.
+
+Review the image or perform the physical
+test again according to the applicable
+testing procedure.
+21. Loading States
+
+Long-running operations should show progress.
+
+Example:
+
+Analyzing...
+
+Image quality        ✓
+Reference detection  ✓
+Reaction detection   ✓
+Colour calibration   ●
+Classification       ○
+
+This makes it clear that the application is still working.
+
+22. Empty States
+
+Test history:
+
+No test records found.
+
+Completed tests will appear here.
+
+Search:
+
+No matching tests found.
+
+Try another substance, test name,
+or record ID.
+23. Responsive Design
+
+The application should work on:
+
+Desktop
+Laptop
+Tablet
+
+The capture interface should prioritize the camera/image area.
+
+The sidebar should collapse when screen width requires it.
+
+24. Visual Design Principles
+
+The UI should use:
+
+Clean cards
+Clear spacing
+Strong typography hierarchy
+Consistent borders
+Consistent button styles
+Minimal unnecessary decoration
+Clear status indicators
+
+The interface should feel like an operational application rather than a generic dashboard template.
+
+25. Accessibility
+
+Important information must not rely only on colour.
+
+For example:
+
+✓ Positive
+✓ Negative
+! Inconclusive
+✕ Error
+
+Text labels should accompany status indicators.
+
+Buttons should have clear action labels:
+
+Capture Image
+Retake Image
+Upload Image
+Analyze Test
+Save Test
+Verify Record
+26. Design of AI-Assisted Classification
+
+The system should not present the classifier as an all-knowing AI.
+
+The UI should communicate that the system analyzes the selected test definition and image evidence.
+
+Example:
+
+Analysis Basis
+
+Selected Test:
+Example Colour Test
+
+Reference:
+Yellow — Shade 1
+
+The result was generated from:
+• Reference-card measurement
+• Reaction colour
+• Colour calibration
+• Hue difference
+• Reaction uniformity
+
+This makes the system more transparent.
+
+27. Final User Flow
+LOGIN
+  ↓
+DASHBOARD
+  ↓
+NEW TEST
+  ↓
+SEARCH / SELECT TEST
+  ↓
+TEST CONFIRMATION
+  ↓
+CAPTURE / UPLOAD IMAGE
+  ↓
+IMAGE QUALITY
+  ↓
+ANALYSIS
+  ↓
+REFERENCE DETECTION
+  ↓
+REACTION DETECTION
+  ↓
+COLOUR CALIBRATION
+  ↓
+CLASSIFICATION
+  ↓
+RESULT
+  ↓
+REVIEW
+  ↓
+SAVE TEST
+  ↓
+HASH / SIGN
+  ↓
+TEST HISTORY
+  ↓
+VERIFICATION
+28. Final Design Principle
+
+The application should always make the following relationship clear:
+
+Selected Test
+      +
+Physical Test Image
+      +
+Reference Card
+      +
+Colour Analysis
+      ↓
+Presumptive Field Result
