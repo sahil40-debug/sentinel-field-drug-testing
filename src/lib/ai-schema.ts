@@ -30,9 +30,30 @@ export const AiAnalysisResultSchema = z.object({
   reference_card_detected: z.boolean(),
   reaction_area_detected: z.boolean(),
   image_quality: z.enum(['good', 'acceptable', 'poor']),
-  caveats: z.array(z.string()).default([]),
+  notes: z.array(z.string()).default([]),
 })
 export type AiAnalysisResult = z.infer<typeof AiAnalysisResultSchema>
+
+// Backwards-compat alias: older records stored this field as `caveats`.
+// `normaliseAnalysis()` below maps old -> new when reading.
+export type AiAnalysisResultLegacy = Omit<AiAnalysisResult, 'notes'> & { caveats?: string[] }
+
+export function normaliseAnalysis(raw: unknown): AiAnalysisResult {
+  const o = (raw ?? {}) as Partial<AiAnalysisResult> & { caveats?: string[] }
+  const notes = (o.notes ?? o.caveats ?? []) as string[]
+  return {
+    classification: (o.classification ?? 'Inconclusive') as AiAnalysisResult['classification'],
+    confidence: typeof o.confidence === 'number' ? o.confidence : 0,
+    reason: o.reason ?? 'No reason provided.',
+    observed_colour: o.observed_colour ?? { name: 'Unknown', hex: '#888888', rgb: [136, 136, 136] },
+    expected_colour: o.expected_colour ?? { name: 'Unknown', hex: '#888888' },
+    colour_match: (o.colour_match ?? 'none') as AiAnalysisResult['colour_match'],
+    reference_card_detected: o.reference_card_detected ?? false,
+    reaction_area_detected: o.reaction_area_detected ?? false,
+    image_quality: (o.image_quality ?? 'acceptable') as AiAnalysisResult['image_quality'],
+    notes,
+  }
+}
 
 export type Classification = 'Positive' | 'Negative' | 'Inconclusive'
 
@@ -86,7 +107,7 @@ The JSON object MUST conform exactly to this shape:
   "reference_card_detected": <boolean>,
   "reaction_area_detected": <boolean>,
   "image_quality": "good" | "acceptable" | "poor",
-  "caveats": ["<optional caveat strings>"]
+  "notes": ["<optional observations / limitations / context strings>"]
 }`
 
   const user = `TEST DEFINITION (the substance the officer is testing for):

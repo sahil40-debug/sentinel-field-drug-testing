@@ -2,17 +2,15 @@
 
 import { useState } from 'react'
 import { useApp } from '@/lib/store'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { shortHash } from '@/lib/integrity'
+import { formatLocation, mapsLink } from '@/lib/geo'
 import { ColorSwatch, ResultBadge, PresumptiveNotice } from '../ui-bits'
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
+  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from '@/components/ui/accordion'
-import { ArrowLeft, ShieldCheck, Loader2, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, ShieldCheck, Loader2, CheckCircle2, MapPin, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
 export function RecordDetailView() {
@@ -23,7 +21,7 @@ export function RecordDetailView() {
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">No record selected.</p>
-        <Button variant="outline" onClick={() => setView('history')} className="gap-1.5">
+        <Button variant="outline" onClick={() => setView('history')} className="gap-1.5 btn-pill">
           <ArrowLeft className="h-4 w-4" /> Back to history
         </Button>
       </div>
@@ -32,6 +30,7 @@ export function RecordDetailView() {
 
   const r = activeRecord
   const a = r.analysis
+  const loc = r.latitude != null && r.longitude != null ? { latitude: r.latitude, longitude: r.longitude, label: r.locationLabel ?? undefined } : null
 
   const verifyNow = async () => {
     setVerifying(true)
@@ -53,56 +52,68 @@ export function RecordDetailView() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Test Record</h1>
+        <div className="space-y-1">
+          <div className="display-eyebrow">Record</div>
+          <h1 className="display-heading text-3xl sm:text-4xl">Test record</h1>
           <p className="text-sm text-muted-foreground font-mono">{r.recordNo}</p>
         </div>
-        <Button variant="outline" onClick={() => setView('history')} className="gap-1.5">
+        <Button variant="outline" onClick={() => setView('history')} className="btn-pill gap-1.5">
           <ArrowLeft className="h-4 w-4" /> History
         </Button>
       </div>
 
-      <Card>
-        <CardContent className="p-4 grid sm:grid-cols-2 gap-4 text-sm">
+      <Card className="card-soft">
+        <CardContent className="p-5 grid sm:grid-cols-2 gap-5 text-sm">
           <Field label="Substance" value={r.drugProfile?.target ?? r.drugProfileId} />
           <Field label="Test / Reagent" value={r.drugProfile?.testMethod ?? '—'} />
           <Field label="Result" value={<ResultBadge c={r.classification} />} />
           <Field label="Confidence" value={`${Math.round(r.confidence * 100)}%`} />
           <Field label="Operator" value={r.operatorId} />
           <Field label="Timestamp" value={new Date(r.createdAt).toLocaleString()} />
+          {loc && (
+            <div className="sm:col-span-2">
+              <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> GPS location</div>
+              <div className="rounded-xl bg-muted/40 px-3 py-2.5 text-sm">
+                <div className="font-medium break-words">{formatLocation(loc)}</div>
+                <a href={mapsLink(loc) ?? '#'} target="_blank" rel="noreferrer" className="text-primary hover:underline inline-flex items-center gap-0.5 text-xs mt-1">
+                  View on map <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            </div>
+          )}
           <div className="sm:col-span-2">
             <div className="text-xs text-muted-foreground mb-1">Reason</div>
-            <p className="text-sm">{r.reason}</p>
+            <p className="text-sm leading-relaxed">{r.reason}</p>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader><CardTitle className="text-base">Captured image</CardTitle></CardHeader>
-          <CardContent>
-            <div className="overflow-hidden rounded-lg border bg-black grid place-items-center aspect-video">
+      <div className="grid md:grid-cols-2 gap-6">
+        <Card className="card-soft">
+          <CardContent className="p-5">
+            <div className="display-eyebrow mb-3">Captured image</div>
+            <div className="overflow-hidden rounded-2xl border bg-black grid place-items-center aspect-video">
               <img src={r.imageDataUrl} alt="Field test evidence" className="h-full w-full object-contain" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle className="text-base">Colour evidence</CardTitle></CardHeader>
-          <CardContent className="space-y-3 text-sm">
+        <Card className="card-soft">
+          <CardContent className="p-5 space-y-4">
+            <div className="display-eyebrow">Colour evidence</div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-xs text-muted-foreground mb-1">Expected reaction</div>
+                <div className="text-xs text-muted-foreground mb-1.5">Expected reaction</div>
                 <ColorSwatch hex={a.expected_colour.hex} label={a.expected_colour.name} sub={a.expected_colour.hex} />
               </div>
               <div>
-                <div className="text-xs text-muted-foreground mb-1">Observed reaction</div>
+                <div className="text-xs text-muted-foreground mb-1.5">Observed reaction</div>
                 <ColorSwatch hex={a.observed_colour.hex} label={a.observed_colour.name} sub={`rgb(${a.observed_colour.rgb.join(', ')})`} />
               </div>
             </div>
-            <div className="rounded-md bg-muted/40 p-3 text-xs space-y-1">
+            <div className="rounded-xl bg-muted/40 p-3 text-xs space-y-1">
               <div>Colour match: <span className="font-medium">{a.colour_match}</span></div>
               <div>Image quality: <span className="font-medium">{a.image_quality}</span></div>
               <div>Reference card: <span className="font-medium">{a.reference_card_detected ? 'detected' : 'not detected'}</span></div>
@@ -112,15 +123,18 @@ export function RecordDetailView() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Integrity</CardTitle>
-          <Button size="sm" onClick={verifyNow} disabled={verifying} className="gap-1.5">
+      <Card className="card-soft">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <div>
+            <div className="display-eyebrow">Integrity</div>
+            <h3 className="display-heading text-lg mt-0.5">Tamper-evident hash</h3>
+          </div>
+          <Button size="sm" onClick={verifyNow} disabled={verifying} className="btn-pill gap-1.5">
             {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
             Verify record
           </Button>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
+        </div>
+        <CardContent className="px-5 pb-5 space-y-2.5 text-sm">
           <HashRow label="Image hash" value={r.imageHash} />
           <HashRow label="Record hash" value={r.recordHash} />
           <div className="flex items-center gap-2">
@@ -130,21 +144,21 @@ export function RecordDetailView() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Reason & caveats</CardTitle></CardHeader>
-        <CardContent>
+      <Card className="card-soft">
+        <CardContent className="p-5">
+          <div className="display-eyebrow mb-3">Reason &amp; notes</div>
           <Accordion type="multiple">
             <AccordionItem value="reason">
               <AccordionTrigger>Model reasoning</AccordionTrigger>
               <AccordionContent className="text-sm">{a.reason}</AccordionContent>
             </AccordionItem>
-            <AccordionItem value="caveats">
-              <AccordionTrigger>Caveats ({a.caveats.length})</AccordionTrigger>
+            <AccordionItem value="notes">
+              <AccordionTrigger>Notes &amp; limitations ({a.notes.length})</AccordionTrigger>
               <AccordionContent>
-                {a.caveats.length ? (
-                  <ul className="list-disc pl-5 text-sm space-y-1">{a.caveats.map((c, i) => <li key={i}>{c}</li>)}</ul>
+                {a.notes.length ? (
+                  <ul className="list-disc pl-5 text-sm space-y-1">{a.notes.map((c, i) => <li key={i}>{c}</li>)}</ul>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No caveats reported.</p>
+                  <p className="text-sm text-muted-foreground">No additional notes.</p>
                 )}
               </AccordionContent>
             </AccordionItem>

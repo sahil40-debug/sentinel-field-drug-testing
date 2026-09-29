@@ -2,15 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '@/lib/store'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ColorSwatch } from '../ui-bits'
+import { ColorSwatch, SectionHeading } from '../ui-bits'
 import { analyseImageQuality, fileToDataUrl, type ImageQuality } from '@/lib/image-quality'
-import { Camera, Upload, RefreshCw, ArrowRight, CheckCircle2, XCircle, Loader2, ArrowLeft } from 'lucide-react'
+import { captureLocation, formatLocation, isGeolocationAvailable, type GeoLocation } from '@/lib/geo'
 import { toast } from 'sonner'
+import {
+  Camera, Upload, RefreshCw, ArrowRight, CheckCircle2, XCircle, Loader2,
+  ArrowLeft, MapPin, LocateFixed,
+} from 'lucide-react'
 
 export function CaptureStep() {
-  const { selectedDrug, capturedImage, setCapturedImage, setView, setAnalysing, setAnalysis } = useApp()
+  const {
+    selectedDrug, capturedImage, setCapturedImage, setView, setAnalysing, setAnalysis,
+    location, setLocation,
+  } = useApp()
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [cameraOn, setCameraOn] = useState(false)
@@ -18,6 +25,7 @@ export function CaptureStep() {
   const [camError, setCamError] = useState<string | null>(null)
   const [quality, setQuality] = useState<ImageQuality | null>(null)
   const [analysingQuality, setAnalysingQuality] = useState(false)
+  const [locating, setLocating] = useState(false)
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -37,7 +45,6 @@ export function CaptureStep() {
       })
       streamRef.current = stream
       setCameraOn(true)
-      // attach the stream now that the <video> is mounted (it renders unconditionally)
       await new Promise((r) => requestAnimationFrame(() => r(null)))
       const video = videoRef.current
       if (video) {
@@ -79,7 +86,6 @@ export function CaptureStep() {
     stopCamera()
   }, [setCapturedImage, stopCamera, videoReady])
 
-  // analyse quality whenever a new image arrives
   useEffect(() => {
     if (!capturedImage) {
       setQuality(null)
@@ -104,6 +110,19 @@ export function CaptureStep() {
     setQuality(null)
   }
 
+  const grabLocation = async () => {
+    setLocating(true)
+    try {
+      const loc = await captureLocation()
+      setLocation(loc)
+      toast.success('Location captured.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not capture location.')
+    } finally {
+      setLocating(false)
+    }
+  }
+
   const runAnalysis = async () => {
     if (!capturedImage || !selectedDrug) return
     setAnalysing(true)
@@ -111,12 +130,15 @@ export function CaptureStep() {
       const res = await fetch('/api/ai-analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageDataUrl: capturedImage, drugProfileId: selectedDrug.id }),
+        body: JSON.stringify({
+          imageDataUrl: capturedImage,
+          drugProfileId: selectedDrug.id,
+        }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error || 'Analysis failed')
       setAnalysis({ result: d.result, imageHash: d.imageHash, drug: d.drug })
-      setView('new-test') // result sub-view renders within new-test
+      setView('new-test')
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Analysis failed')
     } finally {
@@ -128,7 +150,7 @@ export function CaptureStep() {
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">No substance selected.</p>
-        <Button variant="outline" onClick={() => setView('new-test')} className="gap-1.5">
+        <Button variant="outline" onClick={() => setView('new-test')} className="gap-1.5 btn-pill">
           <ArrowLeft className="h-4 w-4" /> Back to selection
         </Button>
       </div>
@@ -136,19 +158,21 @@ export function CaptureStep() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Capture / Upload</h1>
-          <p className="text-sm text-muted-foreground">Step 2 — photograph or upload the completed field test.</p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => setView('new-test')} className="gap-1">
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <SectionHeading
+          eyebrow="Step 2 of 3"
+          title="Capture & locate"
+          sub="Photograph or upload the completed field test, then stamp the GPS location."
+        />
+        <Button variant="ghost" size="sm" onClick={() => setView('new-test')} className="gap-1 btn-pill">
           <ArrowLeft className="h-4 w-4" /> Change substance
         </Button>
       </div>
 
-      <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-        <ColorSwatch hex={selectedDrug.expectedHex} />
+      {/* Selected test strip */}
+      <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card/80 backdrop-blur-sm px-4 py-3">
+        <span className="h-9 w-9 rounded-xl border border-black/5 shrink-0" style={{ backgroundColor: selectedDrug.expectedHex }} />
         <div className="min-w-0">
           <div className="font-medium truncate">{selectedDrug.target}</div>
           <div className="text-xs text-muted-foreground truncate">
@@ -157,100 +181,153 @@ export function CaptureStep() {
         </div>
       </div>
 
-      {!capturedImage ? (
-        <Card>
-          <CardContent className="p-4 space-y-4">
-            <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-black grid place-items-center">
-              {/* video is always mounted so the ref is available the moment startCamera runs */}
-              <video
-                ref={videoRef}
-                className="h-full w-full object-contain"
-                playsInline
-                muted
-                autoPlay
-                onLoadedData={() => setVideoReady(true)}
-                onCanPlay={() => setVideoReady(true)}
-              />
-              {!cameraOn && (
-                <div className="absolute inset-0 grid place-items-center text-center text-muted-foreground p-6 bg-black">
-                  <div>
-                    <Camera className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Camera is off.</p>
-                    <p className="text-xs mt-1">Include the reference colour card and the reaction area in the frame.</p>
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Capture / preview */}
+        <div className="lg:col-span-2 space-y-4">
+          {!capturedImage ? (
+            <Card className="card-soft">
+              <CardContent className="p-4 space-y-4">
+                <div className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black grid place-items-center">
+                  <video
+                    ref={videoRef}
+                    className="h-full w-full object-contain"
+                    playsInline
+                    muted
+                    autoPlay
+                    onLoadedData={() => setVideoReady(true)}
+                    onCanPlay={() => setVideoReady(true)}
+                  />
+                  {!cameraOn && (
+                    <div className="absolute inset-0 grid place-items-center text-center text-white/70 p-6 bg-black">
+                      <div>
+                        <Camera className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">Camera is off.</p>
+                        <p className="text-xs mt-1 opacity-70">Include the reference colour card and the reaction area in the frame.</p>
+                      </div>
+                    </div>
+                  )}
+                  {cameraOn && !videoReady && (
+                    <div className="absolute inset-0 grid place-items-center bg-black/60 text-white/80 text-sm">
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Starting camera…
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {camError && (
+                  <p className="text-xs text-rose-600">Camera error: {camError}. You can still upload an image.</p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  {!cameraOn ? (
+                    <Button onClick={startCamera} variant="default" className="btn-pill gap-1.5 h-10">
+                      <Camera className="h-4 w-4" /> Start camera
+                    </Button>
+                  ) : (
+                    <Button onClick={capture} disabled={!videoReady} className="btn-pill gap-1.5 h-10">
+                      {videoReady ? <Camera className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+                      Capture image
+                    </Button>
+                  )}
+                  <Button onClick={() => document.getElementById('upload-input')?.click()} variant="outline" className="btn-pill gap-1.5 h-10">
+                    <Upload className="h-4 w-4" /> Upload image
+                  </Button>
+                  <input id="upload-input" type="file" accept="image/*" className="hidden" onChange={onUpload} />
+                  {cameraOn && (
+                    <Button onClick={stopCamera} variant="ghost" className="btn-pill h-10">Stop camera</Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="card-soft">
+              <CardContent className="p-4 space-y-4">
+                <div className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black grid place-items-center">
+                  <img src={capturedImage} alt="Captured field test" className="h-full w-full object-contain" />
+                </div>
+                <ImageQualityPanel quality={quality} loading={analysingQuality} />
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={reset} className="btn-pill gap-1.5 h-10">
+                    <RefreshCw className="h-4 w-4" /> Retake
+                  </Button>
+                  <Button
+                    onClick={runAnalysis}
+                    disabled={quality?.status === 'poor' || analysingQuality}
+                    className="btn-pill gap-1.5 h-10 ml-auto"
+                  >
+                    <ArrowRight className="h-4 w-4" /> Analyze test
+                  </Button>
+                  <Button variant="ghost" onClick={() => document.getElementById('upload-input2')?.click()} className="btn-pill gap-1.5 h-10">
+                    <Upload className="h-4 w-4" /> Replace
+                  </Button>
+                  <input id="upload-input2" type="file" accept="image/*" className="hidden" onChange={onUpload} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* GPS panel */}
+        <div className="space-y-4">
+          <Card className="card-soft">
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-primary" />
+                <span className="display-eyebrow m-0">GPS location</span>
+              </div>
+              {location ? (
+                <div className="space-y-3">
+                  <div className="rounded-2xl bg-emerald-50/80 border border-emerald-200/60 px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm text-emerald-800">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span className="font-medium">Location captured</span>
+                    </div>
+                    <p className="text-xs text-emerald-700/90 mt-1.5 leading-relaxed">{formatLocation(location)}</p>
                   </div>
+                  <Button variant="outline" size="sm" onClick={grabLocation} disabled={locating} className="btn-pill gap-1.5 w-full">
+                    {locating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}
+                    Re-capture
+                  </Button>
                 </div>
-              )}
-              {cameraOn && !videoReady && (
-                <div className="absolute inset-0 grid place-items-center bg-black/60 text-white/80 text-sm">
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Starting camera…
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {camError && (
-              <p className="text-xs text-rose-600">Camera error: {camError}. You can still upload an image.</p>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              {!cameraOn ? (
-                <Button onClick={startCamera} variant="default" className="gap-1.5">
-                  <Camera className="h-4 w-4" /> Start camera
-                </Button>
               ) : (
-                <Button onClick={capture} disabled={!videoReady} className="gap-1.5">
-                  {videoReady ? <Camera className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
-                  Capture image
-                </Button>
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    {isGeolocationAvailable()
+                      ? 'Stamp this test with the current GPS coordinates. Optional but recommended for chain-of-custody.'
+                      : 'Geolocation is not available in this browser. You can still proceed without location.'}
+                  </p>
+                  {isGeolocationAvailable() && (
+                    <Button onClick={grabLocation} disabled={locating} className="btn-pill gap-1.5 w-full">
+                      {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+                      Capture location
+                    </Button>
+                  )}
+                </div>
               )}
-              <Button onClick={() => document.getElementById('upload-input')?.click()} variant="outline" className="gap-1.5">
-                <Upload className="h-4 w-4" /> Upload image
-              </Button>
-              <input id="upload-input" type="file" accept="image/*" className="hidden" onChange={onUpload} />
-              {cameraOn && (
-                <Button onClick={stopCamera} variant="ghost">
-                  Stop camera
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-4 space-y-4">
-            <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-black grid place-items-center">
-              <img src={capturedImage} alt="Captured field test" className="h-full w-full object-contain" />
-            </div>
+              <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
+                Coordinates are stored on the record and protected by the tamper-evident hash. Your browser will ask permission.
+              </p>
+            </CardContent>
+          </Card>
 
-            <ImageQualityPanel quality={quality} loading={analysingQuality} />
-
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={reset} className="gap-1.5">
-                <RefreshCw className="h-4 w-4" /> Retake
-              </Button>
-              <Button
-                onClick={runAnalysis}
-                disabled={quality?.status === 'poor' || analysingQuality}
-                className="gap-1.5 ml-auto"
-              >
-                <ArrowRight className="h-4 w-4" /> Analyze test
-              </Button>
-              <Button variant="ghost" onClick={() => document.getElementById('upload-input2')?.click()} className="gap-1.5">
-                <Upload className="h-4 w-4" /> Replace
-              </Button>
-              <input id="upload-input2" type="file" accept="image/*" className="hidden" onChange={onUpload} />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+          <Card className="card-soft bg-accent/20">
+            <CardContent className="p-5 space-y-2">
+              <div className="display-eyebrow">Tip</div>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                For best results, capture under even lighting, include the printed reference colour card, and fill the frame with the reaction area.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }
 
 function ImageQualityPanel({ quality, loading }: { quality: ImageQuality | null; loading: boolean }) {
   return (
-    <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+    <div className="rounded-2xl border border-border/70 bg-muted/40 p-4 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Image quality</span>
         {loading ? (
@@ -267,11 +344,11 @@ function ImageQualityPanel({ quality, loading }: { quality: ImageQuality | null;
                   : 'text-rose-600'
             }`}
           >
-            {quality.status === 'good' ? '● Good' : quality.status === 'acceptable' ? '● Acceptable' : '● Poor'}
+            ● {quality.status === 'good' ? 'Good' : quality.status === 'acceptable' ? 'Acceptable' : 'Poor'}
           </span>
         ) : null}
       </div>
-      <ul className="grid sm:grid-cols-2 gap-1">
+      <ul className="grid sm:grid-cols-2 gap-1.5">
         {quality?.checks.map((c) => (
           <li key={c.label} className="flex items-center gap-2 text-xs">
             {c.ok ? (
@@ -285,9 +362,7 @@ function ImageQualityPanel({ quality, loading }: { quality: ImageQuality | null;
         ))}
       </ul>
       {quality?.status === 'poor' && (
-        <p className="text-xs text-rose-700">
-          Image is too low quality for reliable analysis. Please retake.
-        </p>
+        <p className="text-xs text-rose-700">Image is too low quality for reliable analysis. Please retake.</p>
       )}
     </div>
   )

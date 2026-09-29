@@ -73,3 +73,57 @@ Work Log:
 
 Stage Summary:
 - Camera capture now correctly attaches the stream to the always-mounted <video>, gates the Capture button on frame-readiness, and never silently produces a blank frame. On a real machine with a webcam the live preview will show and capture will produce a real JPEG.
+
+---
+Task ID: 11
+Agent: orchestrator (main)
+Task: Address 5 user feedback items — (1) GPS location, (2) rename "caveats", (3) add more drugs, (4) premium UI redesign (beblessed.io ref), (5) fix new-test/verification stuck bugs.
+
+Work Log:
+1. GPS location:
+   - prisma schema: added latitude Float?, longitude Float?, locationLabel String? to TestRecord.
+   - src/lib/geo.ts: captureLocation() (navigator.geolocation + OpenStreetMap reverse-geocode), formatLocation(), mapsLink().
+   - capture.tsx: new GPS panel with "Capture location" button + toast feedback; location stored in zustand.
+   - records API: stores lat/long/label; verify API includes location in recomputed hash; integrity.ts RecordHashPayload includes location.
+   - record-detail + result: display formatted location + "View on map" link.
+   - history: GPS badge on rows with location.
+   - Tamper test: modifying locationLabel breaks hash -> VERIFICATION FAILED. Verified.
+2. Renamed "caveats" -> "notes" everywhere:
+   - ai-schema.ts: schema field `notes`, prompt updated, normaliseAnalysis() maps legacy `caveats` -> `notes` for old records.
+   - UI: "Notes & limitations" in result + record-detail accordions.
+3. Added 13 more drug profiles -> 33 total:
+   - cannabis/THC (Duquenois-Levine + Fast Blue B), ketamine (Mandelin), LSD (Ehrlich), barbiturates (Dille-Koppanyi), methadone (Marquis), methylphenidate (Marquis), tramadol (Marquis), mephedrone (Marquis), hydromorphone (Marquis), benzodiazepines (Zimmerman), MDPV (Mandelin), dextromethorphan (Marquis).
+   - Fixed apostrophe escaping in Clark's source strings.
+4. Premium UI redesign (beblessed.io reference):
+   - globals.css: new lavender editorial theme (soft lavender bg mesh, deep aubergine primary, teal ring, 1rem radius, soft diffuse shadows, pill buttons, scroll-soft, card-soft, display-heading/eyebrow utilities).
+   - layout.tsx: added Playfair Display serif font.
+   - login.tsx: split-screen hero (editorial brand panel + sign-in), serif headings.
+   - app-shell.tsx: sticky blurred top bar, desktop + mobile nav, serif logo wordmark.
+   - dashboard.tsx: large serif stat numbers, soft cards, recent-tests list with hover lift.
+   - select-drug.tsx: grid of substance cards with colour swatches + active ring.
+   - capture.tsx: 3-column layout (capture + GPS + tip), refined image-quality panel.
+   - analyzing.tsx: centered hero + animated stepper.
+   - result.tsx: hero result card with big serif classification, evidence grid, finalize CTA, notes accordion.
+   - history.tsx, record-detail.tsx, verification.tsx: matching premium treatment.
+5. Bug fixes:
+   - store.ts: added resetFlow() (clears selectedDrug/capturedImage/location/analysis/activeRecord/verification).
+   - app-shell.tsx: nav "New Test" calls resetFlow() when an analysis result is showing -> starts fresh instead of stuck on old result.
+   - dashboard.tsx "New Field Test" also resets.
+   - verification.tsx: added "Verify another" button that clears verification + input; no longer stuck on last result.
+   - Fixed Prisma client staleness: regenerated client after schema change + restarted dev server so latitude/longitude columns are recognised.
+
+Self-verification (Agent Browser, all passed):
+- Login -> premium split-screen hero renders.
+- Dashboard: serif stat numbers, VLM review 8-9/10 across polish/typography/layout/professionalism.
+- New Test -> "33 of 33 substances" loaded -> search filters -> select cocaine.
+- Capture -> GPS panel present, upload image -> quality "Good" -> Analyze -> POSITIVE 95% with notes.
+- Save -> TEST-2026-0001 finalized with record+image hashes.
+- BUG FIX #1: clicked nav "New Test" -> correctly resets to "Select a test" (33 substances) instead of stuck on old result.
+- BUG FIX #2: verification -> verify TEST-2026-0001 -> VERIFIED -> "Verify another" clears -> ready for new record (no longer stuck).
+- GPS: saved record with Mumbai coords via API -> history shows GPS badge -> detail shows "Mumbai, Maharashtra (19.07600, 72.87770)" + "View on map" link.
+- Notes: "Notes & limitations (2)" accordion shows the model's notes (renamed from caveats).
+- Integrity: record-with-location verifies TRUE; tampering locationLabel -> VERIFICATION FAILED (record hash MISMATCH). Tamper-evidence now covers GPS fields too.
+- Lint clean (0 errors, 0 warnings).
+
+Stage Summary:
+- All 5 feedback items shipped and verified. 33 drug profiles. GPS-stamped records. "Notes" replaces "caveats". Premium lavender editorial UI. New-test and verification no longer stuck. Tamper-evidence extended to cover location fields.

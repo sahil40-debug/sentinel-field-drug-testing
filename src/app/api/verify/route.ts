@@ -25,13 +25,16 @@ export async function POST(req: Request) {
     const imageHashRecomputed = hashImageFromDataUrl(row.imageDataUrl)
     // Use the STORED column values (not values re-parsed from analysisJson) so that
     // tampering with ANY stored field — including the denormalised reason /
-    // classification / confidence columns — breaks the recomputed hash.
+    // classification / confidence / location columns — breaks the recomputed hash.
     const recordHashRecomputed = computeRecordHash({
       recordNo: row.recordNo,
       drugProfileId: row.drugProfileId,
       operatorId: row.operatorId,
       imageDataUrl: row.imageDataUrl,
       imageHash: row.imageHash,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      locationLabel: row.locationLabel,
       analysisJson: row.analysisJson,
       classification: row.classification,
       confidence: row.confidence,

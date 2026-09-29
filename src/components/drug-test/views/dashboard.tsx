@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useApp } from '@/lib/store'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ResultBadge } from '../ui-bits'
-import { FlaskRound, Plus, CheckCircle2, XCircle, AlertCircle, ArrowRight } from 'lucide-react'
+import { ResultBadge, SectionHeading } from '../ui-bits'
+import { FlaskRound, Plus, CheckCircle2, XCircle, AlertCircle, ArrowRight, ChevronRight } from 'lucide-react'
 
 interface Stats {
   total: number
@@ -23,7 +23,7 @@ interface Stats {
 }
 
 export function DashboardView() {
-  const { setView, setActiveRecord } = useApp()
+  const { setView, setActiveRecord, analysis, resetFlow } = useApp()
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -39,61 +39,67 @@ export function DashboardView() {
   }, [])
 
   const cards = [
-    { label: 'Total Tests', value: stats?.total, icon: FlaskRound, color: 'text-foreground' },
-    { label: 'Positive', value: stats?.positive, icon: CheckCircle2, color: 'text-emerald-600' },
-    { label: 'Negative', value: stats?.negative, icon: XCircle, color: 'text-rose-600' },
-    { label: 'Inconclusive', value: stats?.inconclusive, icon: AlertCircle, color: 'text-amber-600' },
+    { label: 'Total Tests', value: stats?.total, icon: FlaskRound, tint: 'text-foreground' },
+    { label: 'Positive', value: stats?.positive, icon: CheckCircle2, tint: 'text-emerald-600' },
+    { label: 'Negative', value: stats?.negative, icon: XCircle, tint: 'text-rose-600' },
+    { label: 'Inconclusive', value: stats?.inconclusive, icon: AlertCircle, tint: 'text-amber-600' },
   ]
 
+  const startNew = () => {
+    if (analysis) resetFlow()
+    setView('new-test')
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Operational overview of field drug tests.</p>
-        </div>
-        <Button onClick={() => setView('new-test')} className="gap-1.5">
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <SectionHeading
+          eyebrow="Overview"
+          title="Dashboard"
+          sub="Operational summary of your field drug-testing activity."
+        />
+        <Button onClick={startNew} className="btn-pill gap-1.5 h-11 px-5">
           <Plus className="h-4 w-4" /> New Field Test
         </Button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map((c) => {
+        {cards.map((c, i) => {
           const Icon = c.icon
           return (
-            <Card key={c.label}>
-              <CardContent className="pt-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-3xl font-bold tabular-nums">
-                      {loading ? <Skeleton className="h-8 w-10" /> : c.value ?? 0}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">{c.label}</div>
-                  </div>
-                  <Icon className={`h-8 w-8 ${c.color} opacity-80`} />
+            <Card key={c.label} className="card-soft overflow-hidden">
+              <CardContent className="pt-6 pb-5 relative">
+                <Icon className={`absolute right-4 top-4 h-8 w-8 ${c.tint} opacity-15`} />
+                <div className="font-serif-display text-5xl font-semibold tabular-nums tracking-tight">
+                  {loading ? <Skeleton className="h-12 w-12 rounded-lg" /> : c.value ?? 0}
                 </div>
+                <div className="text-xs text-muted-foreground mt-2 tracking-wide uppercase">{c.label}</div>
+                <span className="sr-only">{c.label}: {c.value ?? 0}</span>
               </CardContent>
             </Card>
           )
         })}
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Recent Tests</CardTitle>
-          <Button variant="ghost" size="sm" onClick={() => setView('history')} className="gap-1">
+      <Card className="card-soft">
+        <div className="flex items-center justify-between px-6 pt-6 pb-4">
+          <div>
+            <div className="display-eyebrow">Activity</div>
+            <h2 className="display-heading text-xl">Recent Tests</h2>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setView('history')} className="gap-1 btn-pill">
             View all <ArrowRight className="h-3.5 w-3.5" />
           </Button>
-        </CardHeader>
+        </div>
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-4 space-y-2">
+            <div className="px-6 pb-6 space-y-2">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <Skeleton key={i} className="h-14 w-full rounded-xl" />
               ))}
             </div>
           ) : stats?.recent.length ? (
-            <ul className="divide-y">
+            <ul className="divide-y divide-border/50">
               {stats.recent.map((r) => (
                 <li key={r.id}>
                   <button
@@ -103,21 +109,27 @@ export function DashboardView() {
                       setActiveRecord(d.record)
                       setView('record-detail')
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 text-left"
+                    className="group w-full flex items-center gap-4 px-6 py-4 hover:bg-accent/40 transition text-left"
                   >
-                    <span className="font-mono text-sm w-32 shrink-0">{r.recordNo}</span>
-                    <span className="flex-1 truncate text-sm">{r.target}</span>
+                    <span className="font-mono text-sm w-28 shrink-0 text-muted-foreground">{r.recordNo}</span>
+                    <span className="flex-1 truncate text-sm font-medium">{r.target}</span>
                     <ResultBadge c={r.classification} />
-                    <span className="text-xs text-muted-foreground hidden sm:inline">
-                      {new Date(r.createdAt).toLocaleString()}
+                    <span className="text-xs text-muted-foreground hidden sm:inline w-40 text-right">
+                      {new Date(r.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-foreground group-hover:translate-x-0.5 transition" />
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              No test records yet. Start a new field test.
+            <div className="px-6 pb-10 pt-2 text-center">
+              <FlaskRound className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">No test records yet.</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">Start your first field test to see it here.</p>
+              <Button onClick={startNew} className="btn-pill mt-4 gap-1.5">
+                <Plus className="h-4 w-4" /> New Field Test
+              </Button>
             </div>
           )}
         </CardContent>

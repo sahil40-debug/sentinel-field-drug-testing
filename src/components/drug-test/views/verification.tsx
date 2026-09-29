@@ -3,21 +3,25 @@
 import { useState } from 'react'
 import { useApp } from '@/lib/store'
 import type { VerificationResult } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { shortHash } from '@/lib/integrity'
-import { CheckCircle2, XCircle, Loader2, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { SectionHeading } from '../ui-bits'
+import { CheckCircle2, XCircle, Loader2, ShieldCheck, ShieldAlert, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 
 export function VerificationView() {
-  const { verification, setVerification, activeRecord } = useApp()
-  const [recordNo, setRecordNo] = useState(activeRecord?.recordNo ?? verification?.recordNo ?? '')
+  const { verification, setVerification } = useApp()
+  const [recordNo, setRecordNo] = useState(verification?.recordNo ?? '')
   const [loading, setLoading] = useState(false)
 
   const verify = async (no?: string) => {
     const target = (no ?? recordNo).trim()
-    if (!target) return
+    if (!target) {
+      toast.error('Enter a record number to verify.')
+      return
+    }
     setLoading(true)
     try {
       const res = await fetch('/api/verify', {
@@ -28,6 +32,7 @@ export function VerificationView() {
       const d = await res.json()
       if (!res.ok) throw new Error(d.error || 'Verification failed')
       setVerification(d.verification)
+      setRecordNo(target)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Verification failed')
       setVerification(null)
@@ -36,26 +41,36 @@ export function VerificationView() {
     }
   }
 
+  const verifyAnother = () => {
+    setVerification(null)
+    setRecordNo('')
+  }
+
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Verify Record</h1>
-        <p className="text-sm text-muted-foreground">
-          Recompute the image hash and record hash from stored fields and compare against the stored integrity values.
-        </p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <SectionHeading
+          eyebrow="Integrity"
+          title="Verify a record"
+          sub="Recompute the image and record hashes from stored fields and compare against the stored integrity values."
+        />
+        {verification && (
+          <Button variant="outline" onClick={verifyAnother} className="btn-pill gap-1.5">
+            <RotateCcw className="h-4 w-4" /> Verify another
+          </Button>
+        )}
       </div>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Record lookup</CardTitle></CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
+      <Card className="card-soft">
+        <CardContent className="p-5 flex flex-wrap gap-2 items-center">
           <Input
             placeholder="Record no e.g. TEST-2026-0001"
             value={recordNo}
             onChange={(e) => setRecordNo(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && verify()}
-            className="max-w-xs"
+            className="max-w-xs h-11 rounded-xl"
           />
-          <Button onClick={() => verify()} disabled={loading} className="gap-1.5">
+          <Button onClick={() => verify()} disabled={loading} className="btn-pill gap-1.5 h-11 px-6">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
             Verify
           </Button>
@@ -70,19 +85,22 @@ export function VerificationView() {
 function VerificationResultCard({ v }: { v: VerificationResult }) {
   const ok = v.verified
   return (
-    <Card className={ok ? 'border-emerald-300 bg-emerald-50/40' : 'border-rose-300 bg-rose-50/40'}>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          {ok ? <ShieldCheck className="h-5 w-5 text-emerald-600" /> : <ShieldAlert className="h-5 w-5 text-rose-600" />}
-          Verification Result
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <Card className={`card-soft border-2 ${ok ? 'border-emerald-300 bg-emerald-50/40' : 'border-rose-300 bg-rose-50/40'}`}>
+      <CardContent className="p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          {ok ? <ShieldCheck className="h-7 w-7 text-emerald-600" /> : <ShieldAlert className="h-7 w-7 text-rose-600" />}
+          <div>
+            <div className="display-eyebrow">{ok ? 'Verified' : 'Failed'}</div>
+            <h3 className="display-heading text-xl">Verification result</h3>
+          </div>
+        </div>
+
         <div className="text-sm">
           <span className="text-muted-foreground">Record: </span>
           <span className="font-mono font-medium">{v.recordNo}</span>
         </div>
-        <ul className="space-y-2 text-sm">
+
+        <ul className="space-y-3 text-sm">
           <HashCompare label="Image hash" stored={v.imageHashStored} computed={v.imageHashRecomputed} match={v.imageHashMatch} />
           <HashCompare label="Record hash" stored={v.recordHashStored} computed={v.recordHashRecomputed} match={v.recordHashMatch} />
           <li className="flex items-center gap-2">
@@ -91,12 +109,11 @@ function VerificationResultCard({ v }: { v: VerificationResult }) {
             <span className="font-medium">{v.signatureValid ? 'VALID (none in prototype)' : 'INVALID'}</span>
           </li>
         </ul>
-        <div className={`rounded-md border px-4 py-3 text-center ${ok ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-rose-300 bg-rose-100 text-rose-800'}`}>
-          <div className="text-xs uppercase tracking-wide">Integrity status</div>
-          <div className="text-xl font-bold mt-0.5">{ok ? '✓ VERIFIED' : '✕ VERIFICATION FAILED'}</div>
-          {!ok && (
-            <p className="text-xs mt-1">The stored record does not match its integrity information.</p>
-          )}
+
+        <div className={`rounded-2xl border px-5 py-4 text-center ${ok ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-rose-300 bg-rose-100 text-rose-800'}`}>
+          <div className="text-xs uppercase tracking-[0.18em] opacity-80">Integrity status</div>
+          <div className="font-serif-display text-2xl font-bold mt-1">{ok ? '✓ VERIFIED' : '✕ VERIFICATION FAILED'}</div>
+          {!ok && <p className="text-xs mt-1.5 opacity-90">The stored record does not match its integrity information.</p>}
         </div>
       </CardContent>
     </Card>
@@ -112,12 +129,8 @@ function HashCompare({ label, stored, computed, match }: { label: string; stored
           <span className="text-muted-foreground w-28">{label}</span>
           <span className={`text-xs font-semibold ${match ? 'text-emerald-600' : 'text-rose-600'}`}>{match ? '✓ MATCH' : '✕ MISMATCH'}</span>
         </div>
-        <div className="font-mono text-[11px] text-muted-foreground mt-0.5">
-          stored: {shortHash(stored)}
-        </div>
-        <div className="font-mono text-[11px] text-muted-foreground">
-          recomputed: {shortHash(computed)}
-        </div>
+        <div className="font-mono text-[11px] text-muted-foreground mt-0.5">stored: {shortHash(stored)}</div>
+        <div className="font-mono text-[11px] text-muted-foreground">recomputed: {shortHash(computed)}</div>
       </div>
     </li>
   )

@@ -39,6 +39,11 @@ model TestRecord {
   imageDataUrl   String
   imageHash      String   // SHA-256 of the raw image bytes
 
+  // GPS location captured at test time (nullable — officer may decline)
+  latitude       Float?
+  longitude      Float?
+  locationLabel  String?  // reverse-geocoded / human-readable label if available
+
   // AI analysis result (stored as JSON string)
   analysisJson   String
 

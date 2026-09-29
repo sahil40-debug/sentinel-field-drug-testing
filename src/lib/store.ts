@@ -2,11 +2,18 @@
  * Client app store (zustand).
  *
  * Holds the auth state, the active view, and the in-progress new-test flow
- * (selected drug, captured image, analysis result) so that the single-page
- * app can move between views without a router.
+ * (selected drug, captured image, analysis result, GPS location) so the
+ * single-page app can move between views without a router.
  */
 import { create } from 'zustand'
-import type { AiAnalysisResult, Classification, DrugProfileDTO, TestRecordDTO, VerificationResult } from '@/lib/types'
+import { normaliseAnalysis, type AiAnalysisResult, type Classification } from './ai-schema'
+import type { DrugProfileDTO, TestRecordDTO, VerificationResult } from './types'
+
+export interface GeoLocation {
+  latitude: number
+  longitude: number
+  label?: string
+}
 
 export type View =
   | 'login'
@@ -32,10 +39,14 @@ interface AppState {
   setSelectedDrug: (d: DrugProfileDTO | null) => void
   capturedImage: string | null // data URL
   setCapturedImage: (img: string | null) => void
+  location: GeoLocation | null
+  setLocation: (l: GeoLocation | null) => void
   analysis: { result: AiAnalysisResult; imageHash: string; drug: DrugProfileDTO } | null
   setAnalysis: (a: AppState['analysis']) => void
   analysing: boolean
   setAnalysing: (b: boolean) => void
+  /** Fully reset the in-progress new-test flow (selected drug, image, location, result). */
+  resetFlow: () => void
 
   // selected record (for detail view)
   activeRecord: TestRecordDTO | null
@@ -60,6 +71,7 @@ export const useApp = create<AppState>((set) => ({
       view: 'login',
       selectedDrug: null,
       capturedImage: null,
+      location: null,
       analysis: null,
       activeRecord: null,
       verification: null,
@@ -72,10 +84,22 @@ export const useApp = create<AppState>((set) => ({
   setSelectedDrug: (selectedDrug) => set({ selectedDrug }),
   capturedImage: null,
   setCapturedImage: (capturedImage) => set({ capturedImage }),
+  location: null,
+  setLocation: (location) => set({ location }),
   analysis: null,
   setAnalysis: (analysis) => set({ analysis }),
   analysing: false,
   setAnalysing: (analysing) => set({ analysing }),
+  resetFlow: () =>
+    set({
+      selectedDrug: null,
+      capturedImage: null,
+      location: null,
+      analysis: null,
+      activeRecord: null,
+      verification: null,
+      analysing: false,
+    }),
 
   activeRecord: null,
   setActiveRecord: (activeRecord) => set({ activeRecord }),
@@ -86,3 +110,6 @@ export const useApp = create<AppState>((set) => ({
   classifyColor: (c) =>
     c === 'Positive' ? 'text-emerald-600' : c === 'Negative' ? 'text-rose-600' : 'text-amber-600',
 }))
+
+/** Helper to safely parse a stored analysis JSON (handles legacy `caveats`). */
+export { normaliseAnalysis }

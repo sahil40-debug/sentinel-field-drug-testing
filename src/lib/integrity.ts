@@ -32,6 +32,9 @@ export interface RecordHashPayload {
   operatorId: string
   imageDataUrl: string
   imageHash: string
+  latitude: number | null
+  longitude: number | null
+  locationLabel: string | null
   analysisJson: string
   classification: string
   confidence: number
@@ -46,6 +49,9 @@ function canonicalise(obj: RecordHashPayload): string {
     'operatorId',
     'imageDataUrl',
     'imageHash',
+    'latitude',
+    'longitude',
+    'locationLabel',
     'analysisJson',
     'classification',
     'confidence',

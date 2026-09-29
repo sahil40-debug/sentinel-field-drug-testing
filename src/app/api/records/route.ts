@@ -6,11 +6,72 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { computeRecordHash, hashImageFromDataUrl } from '@/lib/integrity'
-import type { AiAnalysisResult, DrugProfileDTO, TestRecordDTO } from '@/lib/types'
+import { normaliseAnalysis, type AiAnalysisResult } from '@/lib/ai-schema'
+import type { DrugProfileDTO, TestRecordDTO } from '@/lib/types'
 
 function nextRecordNo(existing: number): string {
   const n = (existing + 1).toString().padStart(4, '0')
   return `TEST-2026-${n}`
+}
+
+function rowToDto(r: {
+  id: string
+  recordNo: string
+  drugProfileId: string
+  operatorId: string
+  imageDataUrl: string
+  imageHash: string
+  latitude: number | null
+  longitude: number | null
+  locationLabel: string | null
+  analysisJson: string
+  classification: string
+  confidence: number
+  reason: string
+  recordHash: string
+  signature: string | null
+  createdAt: Date
+  drugProfile?: {
+    id: string
+    target: string
+    aliases: string
+    testMethod: string
+    expectedColor: string
+    expectedHex: string
+    interpretation: string
+    source: string
+  } | null
+}): TestRecordDTO {
+  return {
+    id: r.id,
+    recordNo: r.recordNo,
+    drugProfileId: r.drugProfileId,
+    drugProfile: r.drugProfile
+      ? ({
+          id: r.drugProfile.id,
+          target: r.drugProfile.target,
+          aliases: JSON.parse(r.drugProfile.aliases) as string[],
+          testMethod: r.drugProfile.testMethod,
+          expectedColor: r.drugProfile.expectedColor,
+          expectedHex: r.drugProfile.expectedHex,
+          interpretation: r.drugProfile.interpretation,
+          source: r.drugProfile.source,
+        } satisfies DrugProfileDTO)
+      : undefined,
+    operatorId: r.operatorId,
+    imageDataUrl: r.imageDataUrl,
+    imageHash: r.imageHash,
+    latitude: r.latitude,
+    longitude: r.longitude,
+    locationLabel: r.locationLabel,
+    analysis: normaliseAnalysis(JSON.parse(r.analysisJson)),
+    classification: r.classification as TestRecordDTO['classification'],
+    confidence: r.confidence,
+    reason: r.reason,
+    recordHash: r.recordHash,
+    signature: r.signature,
+    createdAt: r.createdAt.toISOString(),
+  }
 }
 
 export async function GET(req: Request) {
@@ -26,37 +87,11 @@ export async function GET(req: Request) {
       include: { drugProfile: true },
     })
 
-    let dtos: TestRecordDTO[] = rows.map((r) => ({
-      id: r.id,
-      recordNo: r.recordNo,
-      drugProfileId: r.drugProfileId,
-      drugProfile: r.drugProfile
-        ? ({
-            id: r.drugProfile.id,
-            target: r.drugProfile.target,
-            aliases: JSON.parse(r.drugProfile.aliases) as string[],
-            testMethod: r.drugProfile.testMethod,
-            expectedColor: r.drugProfile.expectedColor,
-            expectedHex: r.drugProfile.expectedHex,
-            interpretation: r.drugProfile.interpretation,
-            source: r.drugProfile.source,
-          } satisfies DrugProfileDTO)
-        : undefined,
-      operatorId: r.operatorId,
-      imageDataUrl: r.imageDataUrl,
-      imageHash: r.imageHash,
-      analysis: JSON.parse(r.analysisJson) as AiAnalysisResult,
-      classification: r.classification as TestRecordDTO['classification'],
-      confidence: r.confidence,
-      reason: r.reason,
-      recordHash: r.recordHash,
-      signature: r.signature,
-      createdAt: r.createdAt.toISOString(),
-    }))
+    let dtos: TestRecordDTO[] = rows.map(rowToDto)
 
     if (q) {
       dtos = dtos.filter((d) => {
-        const hay = `${d.recordNo} ${d.drugProfile?.target ?? ''} ${d.drugProfile?.id ?? ''} ${d.operatorId}`.toLowerCase()
+        const hay = `${d.recordNo} ${d.drugProfile?.target ?? ''} ${d.drugProfile?.id ?? ''} ${d.operatorId} ${d.locationLabel ?? ''}`.toLowerCase()
         return hay.includes(q)
       })
     }
@@ -73,11 +108,12 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { imageDataUrl, drugProfileId, analysis, operatorId } = body as {
+    const { imageDataUrl, drugProfileId, analysis, operatorId, location } = body as {
       imageDataUrl?: string
       drugProfileId?: string
       analysis?: AiAnalysisResult
       operatorId?: string
+      location?: { latitude?: number; longitude?: number; label?: string } | null
     }
 
     if (!imageDataUrl || !drugProfileId || !analysis) {
@@ -90,6 +126,10 @@ export async function POST(req: Request) {
     const imageHash = hashImageFromDataUrl(imageDataUrl)
     const analysisJson = JSON.stringify(analysis)
 
+    const lat = typeof location?.latitude === 'number' ? location.latitude : null
+    const lng = typeof location?.longitude === 'number' ? location.longitude : null
+    const locationLabel = location?.label?.trim() || null
+
     const count = await db.testRecord.count()
     const recordNo = nextRecordNo(count)
 
@@ -100,6 +140,9 @@ export async function POST(req: Request) {
         operatorId: op,
         imageDataUrl,
         imageHash,
+        latitude: lat,
+        longitude: lng,
+        locationLabel,
         analysisJson,
         classification: analysis.classification,
         confidence: analysis.confidence,
@@ -117,6 +160,9 @@ export async function POST(req: Request) {
       operatorId: op,
       imageDataUrl,
       imageHash,
+      latitude: lat,
+      longitude: lng,
+      locationLabel,
       analysisJson,
       classification: analysis.classification,
       confidence: analysis.confidence,
@@ -127,24 +173,10 @@ export async function POST(req: Request) {
     const updated = await db.testRecord.update({
       where: { id: created.id },
       data: { recordHash },
+      include: { drugProfile: true },
     })
 
-    const dto: TestRecordDTO = {
-      id: updated.id,
-      recordNo: updated.recordNo,
-      drugProfileId: updated.drugProfileId,
-      operatorId: updated.operatorId,
-      imageDataUrl: updated.imageDataUrl,
-      imageHash: updated.imageHash,
-      analysis: JSON.parse(updated.analysisJson) as AiAnalysisResult,
-      classification: updated.classification as TestRecordDTO['classification'],
-      confidence: updated.confidence,
-      reason: updated.reason,
-      recordHash: updated.recordHash,
-      signature: updated.signature,
-      createdAt: updated.createdAt.toISOString(),
-    }
-    return NextResponse.json({ record: dto })
+    return NextResponse.json({ record: rowToDto(updated) })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: msg }, { status: 500 })

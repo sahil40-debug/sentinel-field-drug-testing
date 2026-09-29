@@ -27,6 +27,9 @@ export interface TestRecordDTO {
   operatorId: string
   imageDataUrl: string
   imageHash: string
+  latitude: number | null
+  longitude: number | null
+  locationLabel: string | null
   analysis: AiAnalysisResult
   classification: Classification
   confidence: number
