@@ -7,12 +7,14 @@ import { Button } from '@/components/ui/button'
 import { ColorSwatch } from '../ui-bits'
 import { analyseImageQuality, fileToDataUrl, type ImageQuality } from '@/lib/image-quality'
 import { Camera, Upload, RefreshCw, ArrowRight, CheckCircle2, XCircle, Loader2, ArrowLeft } from 'lucide-react'
+import { toast } from 'sonner'
 
 export function CaptureStep() {
   const { selectedDrug, capturedImage, setCapturedImage, setView, setAnalysing, setAnalysis } = useApp()
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [cameraOn, setCameraOn] = useState(false)
+  const [videoReady, setVideoReady] = useState(false)
   const [camError, setCamError] = useState<string | null>(null)
   const [quality, setQuality] = useState<ImageQuality | null>(null)
   const [analysingQuality, setAnalysingQuality] = useState(false)
@@ -20,24 +22,31 @@ export function CaptureStep() {
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
     setCameraOn(false)
+    setVideoReady(false)
   }, [])
 
   const startCamera = useCallback(async () => {
     setCamError(null)
+    setVideoReady(false)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } },
         audio: false,
       })
       streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-      }
       setCameraOn(true)
+      // attach the stream now that the <video> is mounted (it renders unconditionally)
+      await new Promise((r) => requestAnimationFrame(() => r(null)))
+      const video = videoRef.current
+      if (video) {
+        video.srcObject = stream
+        await video.play()
+      }
     } catch (e) {
       setCamError(e instanceof Error ? e.message : 'Could not access camera')
+      setCameraOn(false)
     }
   }, [])
 
@@ -45,19 +54,30 @@ export function CaptureStep() {
 
   const capture = useCallback(() => {
     const video = videoRef.current
-    if (!video) return
+    if (!video || !videoReady) {
+      toast.error('Camera is still warming up. Please wait a second and try again.')
+      return
+    }
+    const w = video.videoWidth
+    const h = video.videoHeight
+    if (!w || !h) {
+      toast.error('Video frame not ready yet. Please try again.')
+      return
+    }
     const canvas = document.createElement('canvas')
-    const w = video.videoWidth || 1024
-    const h = video.videoHeight || 768
     canvas.width = w
     canvas.height = h
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     ctx.drawImage(video, 0, 0, w, h)
     const url = canvas.toDataURL('image/jpeg', 0.9)
+    if (!url || url === 'data:,') {
+      toast.error('Capture failed. Please try again.')
+      return
+    }
     setCapturedImage(url)
     stopCamera()
-  }, [setCapturedImage, stopCamera])
+  }, [setCapturedImage, stopCamera, videoReady])
 
   // analyse quality whenever a new image arrives
   useEffect(() => {
@@ -141,13 +161,30 @@ export function CaptureStep() {
         <Card>
           <CardContent className="p-4 space-y-4">
             <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-black grid place-items-center">
-              {cameraOn ? (
-                <video ref={videoRef} className="h-full w-full object-contain" playsInline muted />
-              ) : (
-                <div className="text-center text-muted-foreground p-6">
-                  <Camera className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Camera is off.</p>
-                  <p className="text-xs mt-1">Include the reference colour card and the reaction area in the frame.</p>
+              {/* video is always mounted so the ref is available the moment startCamera runs */}
+              <video
+                ref={videoRef}
+                className="h-full w-full object-contain"
+                playsInline
+                muted
+                autoPlay
+                onLoadedData={() => setVideoReady(true)}
+                onCanPlay={() => setVideoReady(true)}
+              />
+              {!cameraOn && (
+                <div className="absolute inset-0 grid place-items-center text-center text-muted-foreground p-6 bg-black">
+                  <div>
+                    <Camera className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Camera is off.</p>
+                    <p className="text-xs mt-1">Include the reference colour card and the reaction area in the frame.</p>
+                  </div>
+                </div>
+              )}
+              {cameraOn && !videoReady && (
+                <div className="absolute inset-0 grid place-items-center bg-black/60 text-white/80 text-sm">
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Starting camera…
+                  </span>
                 </div>
               )}
             </div>
@@ -162,8 +199,9 @@ export function CaptureStep() {
                   <Camera className="h-4 w-4" /> Start camera
                 </Button>
               ) : (
-                <Button onClick={capture} className="gap-1.5">
-                  <Camera className="h-4 w-4" /> Capture image
+                <Button onClick={capture} disabled={!videoReady} className="gap-1.5">
+                  {videoReady ? <Camera className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+                  Capture image
                 </Button>
               )}
               <Button onClick={() => document.getElementById('upload-input')?.click()} variant="outline" className="gap-1.5">

@@ -54,3 +54,22 @@ Stage Summary:
 - Complete working app at / route. End-to-end golden path verified in browser: select drug -> capture/upload -> image quality -> AI VLM analysis (strict JSON) -> result screen -> save (SHA-256 record+image hash) -> history -> record detail -> verification (tamper-evident).
 - AI model = z-ai VLM (zai.chat.completions.createVision) with a Gemini-compatible strict-JSON schema + prompt; portable to Gemini by swapping the SDK call.
 - 20 drug profiles seeded; meaning of Positive/Negative is driven by the selected test type + its expected reaction colour.
+
+---
+Task ID: 10
+Agent: orchestrator (main)
+Task: Fix camera capture bug — "camera is on but not clicking photo".
+
+Work Log:
+- Root cause: the <video> element was conditionally rendered only when cameraOn=true, but startCamera() tried to attach the getUserMedia stream to videoRef.current BEFORE setCameraOn(true) triggered the re-render that mounts the video. So videoRef.current was null, the stream was never attached to the video element, and capture() drew a blank/black frame (videoWidth=0) → looked like "nothing captured".
+- Fix in src/components/drug-test/views/capture.tsx:
+  1. <video> now always mounted (placeholder overlay shown when off) so ref is always available.
+  2. Added videoReady state set via onLoadedData/onCanPlay events.
+  3. "Capture image" button disabled (spinner) until videoReady is true.
+  4. Added "Starting camera…" spinner overlay during warm-up.
+  5. capture() guards against videoWidth===0 with a toast ("Camera is still warming up") instead of silently producing a blank image.
+  6. stopCamera() now also clears video.srcObject and resets videoReady.
+- Verified: lint clean, compiles OK. In headless sandbox getUserMedia returns "Requested device not found" (no physical camera) and the error now surfaces clearly with the upload fallback. Upload path re-tested and still works.
+
+Stage Summary:
+- Camera capture now correctly attaches the stream to the always-mounted <video>, gates the Capture button on frame-readiness, and never silently produces a blank frame. On a real machine with a webcam the live preview will show and capture will produce a real JPEG.
