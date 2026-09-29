@@ -28,6 +28,10 @@ export function CaptureStep() {
   const [quality, setQuality] = useState<ImageQuality | null>(null)
   const [analysingQuality, setAnalysingQuality] = useState(false)
   const [locating, setLocating] = useState(false)
+  // Whether the active camera is the front (user-facing) one — the preview is
+  // mirrored in that case so it feels like a mirror, and the captured photo is
+  // flipped to match what the officer saw on screen. Rear cameras are NOT mirrored.
+  const [isFrontCamera, setIsFrontCamera] = useState(false)
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -35,17 +39,37 @@ export function CaptureStep() {
     if (videoRef.current) videoRef.current.srcObject = null
     setCameraOn(false)
     setVideoReady(false)
+    setIsFrontCamera(false)
   }, [])
 
   const startCamera = useCallback(async () => {
     setCamError(null)
     setVideoReady(false)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } },
-        audio: false,
-      })
+      // Prefer the rear (environment) camera — the natural orientation for field use.
+      let stream: MediaStream | null = null
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } },
+          audio: false,
+        })
+      } catch {
+        // Fallback: any camera (desktops often only have a front webcam)
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 960 } },
+          audio: false,
+        })
+      }
       streamRef.current = stream
+      // Detect front camera: the track label usually contains "front" or "user".
+      const track = stream.getVideoTracks()[0]
+      const label = (track?.label || '').toLowerCase()
+      const front = label.includes('front') || label.includes('user') || label.includes('facetime')
+      // facingMode setting from the track capabilities is the most reliable signal
+      const caps = track?.getCapabilities?.() as MediaTrackCapabilities & { facingMode?: string[] } | undefined
+      const facing = caps?.facingMode
+      const isFront = facing ? facing.includes('user') : front
+      setIsFrontCamera(isFront)
       setCameraOn(true)
       await new Promise((r) => requestAnimationFrame(() => r(null)))
       const video = videoRef.current
@@ -78,6 +102,12 @@ export function CaptureStep() {
     canvas.height = h
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    // Mirror the captured photo to match the mirrored preview (front camera only),
+    // so what the officer saw on screen is exactly what gets stored.
+    if (isFrontCamera) {
+      ctx.translate(w, 0)
+      ctx.scale(-1, 1)
+    }
     ctx.drawImage(video, 0, 0, w, h)
     const url = canvas.toDataURL('image/jpeg', 0.9)
     if (!url || url === 'data:,') {
@@ -86,7 +116,7 @@ export function CaptureStep() {
     }
     setCapturedImage(url)
     stopCamera()
-  }, [setCapturedImage, stopCamera, videoReady])
+  }, [setCapturedImage, stopCamera, videoReady, isFrontCamera])
 
   useEffect(() => {
     if (!capturedImage) {
@@ -194,7 +224,7 @@ export function CaptureStep() {
                 <div className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black grid place-items-center">
                   <video
                     ref={videoRef}
-                    className="h-full w-full object-contain"
+                    className={`h-full w-full object-contain ${isFrontCamera ? 'scale-x-[-1]' : ''}`}
                     playsInline
                     muted
                     autoPlay
