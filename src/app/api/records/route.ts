@@ -100,8 +100,8 @@ export async function GET(req: Request) {
     }
     return NextResponse.json({ records: dtos, total: dtos.length })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    // DB not ready — return empty list so the History UI doesn't crash.
+    return NextResponse.json({ records: [], total: 0 })
   }
 }
 

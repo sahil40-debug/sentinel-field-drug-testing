@@ -21,8 +21,8 @@ export function HistoryView() {
     let alive = true
     fetch('/api/records')
       .then((r) => r.json())
-      .then((d) => alive && setRecords(d.records))
-      .catch(() => setRecords([]))
+      .then((d) => alive && setRecords(Array.isArray(d?.records) ? d.records : []))
+      .catch(() => alive && setRecords([]))
     return () => {
       alive = false
     }

@@ -19,7 +19,7 @@ export function SelectDrugStep() {
   useEffect(() => {
     fetch('/api/drugs')
       .then((r) => r.json())
-      .then((d) => setProfiles(d.profiles))
+      .then((d) => setProfiles(Array.isArray(d?.profiles) ? d.profiles : []))
       .catch(() => setProfiles([]))
   }, [])
 

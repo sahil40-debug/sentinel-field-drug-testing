@@ -31,7 +31,13 @@ export function DashboardView() {
     let alive = true
     fetch('/api/stats')
       .then((r) => r.json())
-      .then((d) => alive && setStats(d))
+      .then((d) => {
+        if (!alive) return
+        // Only accept well-formed stats objects; ignore { error: "..." } payloads.
+        if (d && typeof d.total === 'number') setStats(d)
+        else setStats({ total: 0, positive: 0, negative: 0, inconclusive: 0, recent: [] })
+      })
+      .catch(() => alive && setStats({ total: 0, positive: 0, negative: 0, inconclusive: 0, recent: [] }))
       .finally(() => alive && setLoading(false))
     return () => {
       alive = false

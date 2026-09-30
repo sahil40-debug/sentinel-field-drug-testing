@@ -1,5 +1,7 @@
 /**
  * GET /api/stats — dashboard counters.
+ * Returns zeros if the database isn't reachable yet (e.g. before Postgres is
+ * connected on Vercel) so the dashboard loads gracefully instead of crashing.
  */
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
@@ -24,7 +26,7 @@ export async function GET() {
     }))
     return NextResponse.json({ total, positive, negative, inconclusive, recent: recentList })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    return NextResponse.json({ error: msg }, { status: 500 })
+    // DB not ready — return empty stats so the UI doesn't crash.
+    return NextResponse.json({ total: 0, positive: 0, negative: 0, inconclusive: 0, recent: [] })
   }
 }
