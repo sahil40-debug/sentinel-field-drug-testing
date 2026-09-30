@@ -133,7 +133,7 @@ export async function POST(req: Request) {
     const count = await db.testRecord.count()
     const recordNo = nextRecordNo(count)
 
-    const created = await db.testRecord.create({
+    await db.testRecord.create({
       data: {
         recordNo,
         drugProfileId,
@@ -152,26 +152,30 @@ export async function POST(req: Request) {
       },
     })
 
-    // Recompute the hash from the ACTUAL stored createdAt so the value used for
-    // the hash is byte-identical to what verification will read back later.
+    // Re-fetch the stored row so the hash is computed from the EXACT values
+    // that verification will read back later (avoids timestamp precision
+    // mismatches between INSERT and SELECT on Postgres).
+    const stored = await db.testRecord.findUnique({ where: { recordNo } })
+    if (!stored) throw new Error('Failed to read back created record')
+
     const recordHash = computeRecordHash({
-      recordNo: created.recordNo,
-      drugProfileId,
-      operatorId: op,
-      imageDataUrl,
-      imageHash,
-      latitude: lat,
-      longitude: lng,
-      locationLabel,
-      analysisJson,
-      classification: analysis.classification,
-      confidence: analysis.confidence,
-      reason: analysis.reason,
-      createdAt: created.createdAt.toISOString(),
+      recordNo: stored.recordNo,
+      drugProfileId: stored.drugProfileId,
+      operatorId: stored.operatorId,
+      imageDataUrl: stored.imageDataUrl,
+      imageHash: stored.imageHash,
+      latitude: stored.latitude,
+      longitude: stored.longitude,
+      locationLabel: stored.locationLabel,
+      analysisJson: stored.analysisJson,
+      classification: stored.classification,
+      confidence: stored.confidence,
+      reason: stored.reason,
+      createdAt: stored.createdAt.toISOString(),
     })
 
     const updated = await db.testRecord.update({
-      where: { id: created.id },
+      where: { id: stored.id },
       data: { recordHash },
       include: { drugProfile: true },
     })
