@@ -1,30 +1,89 @@
 /**
- * VLM client wrapper — calls z-ai-web-dev-sdk vision API and parses the
- * strict-JSON response into an AiAnalysisResult.
+ * VLM client wrapper — calls Google Gemini Vision API and parses the
+ * structured-JSON response into an AiAnalysisResult.
  *
  * SERVER-ONLY. Never import this from a client component.
+ *
+ * Requires GEMINI_API_KEY environment variable (get one free at
+ * https://aistudio.google.com/apikey).
  */
 import 'server-only'
-import ZAI from 'z-ai-web-dev-sdk'
+import { GoogleGenAI, Type } from '@google/genai'
 import { AiAnalysisResultSchema, buildAnalysisPrompt, type AnalysisContext, type AiAnalysisResult } from './ai-schema'
 
-let _zai: Awaited<ReturnType<typeof ZAI.create>> | null = null
-async function getZai() {
-  if (!_zai) _zai = await ZAI.create()
-  return _zai
+let _client: GoogleGenAI | null = null
+function getClient(): GoogleGenAI {
+  if (_client) return _client
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY environment variable is not set. Get a free key at https://aistudio.google.com/apikey and add it to Vercel.')
+  }
+  _client = new GoogleGenAI({ apiKey })
+  return _client
 }
 
-/** Best-effort JSON extraction from a model response that may include stray text. */
-function extractJson(raw: string): string {
-  let s = raw.trim()
-  // strip code fences ```json ... ```
-  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  if (fence) s = fence[1].trim()
-  // grab the outermost {...} block
-  const start = s.indexOf('{')
-  const end = s.lastIndexOf('}')
-  if (start !== -1 && end !== -1 && end > start) s = s.slice(start, end + 1)
-  return s
+/**
+ * The Gemini response schema — guarantees the model returns exactly this
+ * JSON shape (much more reliable than prompt-only enforcement).
+ */
+const responseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    classification: {
+      type: Type.STRING,
+      enum: ['Positive', 'Negative', 'Inconclusive'],
+    },
+    confidence: { type: Type.NUMBER },
+    reason: { type: Type.STRING },
+    observed_colour: {
+      type: Type.OBJECT,
+      properties: {
+        name: { type: Type.STRING },
+        hex: { type: Type.STRING },
+        rgb: {
+          type: Type.ARRAY,
+          items: { type: Type.INTEGER },
+        },
+      },
+      required: ['name', 'hex', 'rgb'],
+    },
+    expected_colour: {
+      type: Type.OBJECT,
+      properties: {
+        name: { type: Type.STRING },
+        hex: { type: Type.STRING },
+      },
+      required: ['name', 'hex'],
+    },
+    colour_match: {
+      type: Type.STRING,
+      enum: ['strong', 'moderate', 'weak', 'none'],
+    },
+    reference_card_detected: { type: Type.BOOLEAN },
+    reaction_area_detected: { type: Type.BOOLEAN },
+    image_quality: {
+      type: Type.STRING,
+      enum: ['good', 'acceptable', 'poor'],
+    },
+    manual_override_used: { type: Type.BOOLEAN },
+    notes: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+  },
+  required: [
+    'classification',
+    'confidence',
+    'reason',
+    'observed_colour',
+    'expected_colour',
+    'colour_match',
+    'reference_card_detected',
+    'reaction_area_detected',
+    'image_quality',
+    'manual_override_used',
+    'notes',
+  ],
 }
 
 export interface AnalyseImageArgs {
@@ -37,39 +96,51 @@ export async function analyseTestImage({
   context,
 }: AnalyseImageArgs): Promise<{ ok: true; result: AiAnalysisResult } | { ok: false; error: string; raw?: string }> {
   try {
-    const zai = await getZai()
+    const client = getClient()
     const { system, user } = buildAnalysisPrompt(context)
 
-    const response = await zai.chat.completions.createVision({
-      messages: [
-        { role: 'system', content: system },
+    // Extract mime type + base64 from the data URL
+    const match = imageDataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/)
+    if (!match) {
+      return { ok: false, error: 'Invalid image data URL format.' }
+    }
+    const mimeType = match[1]
+    const base64Data = match[2]
+
+    const response = await client.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
         {
           role: 'user',
-          content: [
-            { type: 'text', text: user },
-            { type: 'image_url', image_url: { url: imageDataUrl } },
+          parts: [
+            { text: user },
+            { inlineData: { mimeType, data: base64Data } },
           ],
         },
       ],
-      thinking: { type: 'disabled' },
-    } as any)
+      config: {
+        systemInstruction: system,
+        responseMimeType: 'application/json',
+        responseSchema,
+      },
+    })
 
-    const raw = response.choices?.[0]?.message?.content ?? ''
-    if (!raw) return { ok: false, error: 'Model returned an empty response.' }
+    const raw = response.text ?? ''
+    if (!raw) return { ok: false, error: 'Gemini returned an empty response.' }
 
-    const jsonStr = extractJson(raw)
+    // With responseSchema, Gemini guarantees valid JSON — but we still validate
     let parsed: unknown
     try {
-      parsed = JSON.parse(jsonStr)
+      parsed = JSON.parse(raw)
     } catch {
-      return { ok: false, error: 'Model response was not valid JSON.', raw }
+      return { ok: false, error: 'Gemini response was not valid JSON.', raw }
     }
 
     const validation = AiAnalysisResultSchema.safeParse(parsed)
     if (!validation.success) {
       return {
         ok: false,
-        error: 'Model response failed schema validation: ' + validation.error.issues.map((i) => i.message).join('; '),
+        error: 'Gemini response failed schema validation: ' + validation.error.issues.map((i) => i.message).join('; '),
         raw,
       }
     }
