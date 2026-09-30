@@ -4,6 +4,8 @@
 >
 > A presumptive, AI-assisted field drug-testing companion. Capture a colour-change test, let a vision-language model compare the reaction against the expected reference colour, and produce a GPS-stamped, tamper-evident digital record — all from a phone, in the field.
 
+**🌐 Live demo:** [https://sentinel-field-drug-testing.vercel.app](https://sentinel-field-drug-testing.vercel.app)
+
 ---
 
 ## ⚠️ Important disclaimer
@@ -72,7 +74,7 @@ Add new substances by appending to `src/lib/drug-profiles.ts` — the classifier
 
 ## 🤖 The AI model & JSON schema
 
-The image-analysis engine uses the **z-ai-web-dev-sdk** vision API (`zai.chat.completions.createVision`). 
+The image-analysis engine uses **Google Gemini** via the `@google/genai` SDK (model `gemini-2.5-flash-lite` — free tier, 1500 requests/day). The code includes a built-in **model fallback** that tries multiple Gemini model names in order, so it keeps working even if Google deprecates a model name. Requires a `GEMINI_API_KEY` environment variable — get one free at **https://aistudio.google.com/apikey**.
 
 ### Input to the model
 - The captured image (base64 data URL)
@@ -116,8 +118,8 @@ Every finalized record is protected by two SHA-256 hashes (Node `crypto`, `src/l
 - **Framework:** Next.js 16 (App Router, Turbopack)
 - **Language:** TypeScript 5
 - **Styling:** Tailwind CSS 4 + shadcn/ui (New York) + Playfair Display (serif headings)
-- **Database:** Prisma ORM + SQLite
-- **AI:** `z-ai-web-dev-sdk` Vision API (Gemini-compatible prompt/schema)
+- **Database:** Prisma ORM + Neon Postgres (production) / SQLite (local dev)
+- **AI:** Google Gemini (`@google/genai` SDK, `gemini-2.5-flash-lite` model with auto-fallback)
 - **State:** Zustand (client) — single-page view-state app
 - **Icons:** Lucide
 - **PWA:** manifest + service worker (installable, offline shell)
@@ -172,12 +174,13 @@ src/
 
 ### Prerequisites
 - Node.js 20+ (or [Bun](https://bun.sh))
-- A `z-ai-web-dev-sdk` compatible environment (the SDK is pre-installed in the Z.ai sandbox; elsewhere set the required env vars)
+- A `GEMINI_API_KEY` — free from https://aistudio.google.com/apikey
+- A Postgres database (Neon free tier for Vercel; or use SQLite locally by temporarily setting `provider = "sqlite"` in `prisma/schema.prisma`)
 
 ### Install & run
 ```bash
 bun install                 # or npm install
-bun run db:push             # create the SQLite schema
+bun run db:push             # create the database schema (Postgres or SQLite)
 bun run dev                 # start on http://localhost:3000
 ```
 
@@ -188,7 +191,7 @@ Open the app, sign in with any operator ID (e.g. `OFFICER-01`), and run a test.
 |---|---|
 | `bun run dev` | Start dev server (port 3000) |
 | `bun run lint` | ESLint |
-| `bun run db:push` | Push Prisma schema to SQLite |
+| `bun run db:push` | Push Prisma schema to the database |
 | `bun run db:generate` | Regenerate Prisma Client |
 | `bun run build` | Production build |
 | `bun run start` | Run the production server |
@@ -210,22 +213,24 @@ To install: open the app in a mobile/desktop browser → "Add to Home screen" / 
 
 Sentinel deploys cleanly to any Next.js-friendly host. Recommended: **Vercel**.
 
-### Vercel (recommended)
+### Vercel (recommended — the production deployment target)
+
+This project is configured for one-click Vercel deployment. The `vercel-build` script auto-runs `prisma generate && prisma db push && next build`, so Postgres tables are created automatically on every deploy.
+
 1. Push this repo to GitHub.
 2. Import the repo at [vercel.com/new](https://vercel.com/new).
 3. Framework preset: **Next.js** (auto-detected).
-4. Set environment variables:
-   - `DATABASE_URL` — a persistent SQLite path (or swap to Postgres by changing `prisma/schema.prisma` `datasource db.provider` to `postgresql`).
-   - Any `z-ai-web-dev-sdk` credentials your environment requires.
-5. Build command: `next build` (default). Output: `.next/`.
-6. Deploy. Vercel handles the PWA manifest + service worker automatically as static files.
+4. Create a **Neon Postgres** database: Vercel project → **Storage** tab → Create Database → Postgres (Neon). Vercel auto-adds `POSTGRES_URL` and friends.
+5. Add environment variables (Settings → Environment Variables):
+   - `DATABASE_URL` = `#{POSTGRES_URL}` (or paste the Neon connection string directly) — all 3 environments, type Secret
+   - `GEMINI_API_KEY` = [your key from https://aistudio.google.com/apikey] — all 3 environments, type Secret
+6. Deploy. The build auto-creates the Postgres tables via `prisma db push`.
+
+> **Note:** If the auto-created env var conflicts with an existing `DATABASE_URL`, delete the old one first. Neon's Prisma tab (in the Vercel Storage view) shows the connection string if you need it.
 
 ### Other hosts
-- **Netlify** — Next.js runtime, set `DATABASE_URL` to a persistent volume path.
-- **Render / Railway** — deploy as a Node service with a persistent disk for `db/custom.db`.
-- **Self-hosted** — `bun run build && bun run start` behind a reverse proxy.
-
-> ⚠️ For production, replace SQLite with a managed Postgres (update `schema.prisma` + `DATABASE_URL`) and store images on object storage (S3/R2) instead of in the DB.
+- **Netlify / Render / Railway** — deploy as a Next.js app with a managed Postgres and the same two env vars (`DATABASE_URL`, `GEMINI_API_KEY`).
+- **Self-hosted** — `bun run build && bun run start` behind a reverse proxy; provide a Postgres instance and the `GEMINI_API_KEY`.
 
 ---
 
@@ -246,7 +251,7 @@ Sentinel deploys cleanly to any Next.js-friendly host. Recommended: **Vercel**.
 
 ## 🔒 Security notes
 
-- The AI analysis runs **server-side only** — `z-ai-web-dev-sdk` is never imported in client code.
+- The AI analysis runs **server-side only** — `@google/genai` is never imported in client code.
 - Hashes and integrity status are computed on the backend; the frontend never generates or trusts client-side hashes.
 - Geolocation requires explicit browser permission and is opt-in.
 - For production, add authentication (NextAuth.js v4 is available in the stack) and rate-limit the `/api/ai-analyze` route.
