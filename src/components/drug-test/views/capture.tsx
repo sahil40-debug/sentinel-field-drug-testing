@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ColorSwatch, SectionHeading } from '../ui-bits'
 import { analyseImageQuality, fileToDataUrl, type ImageQuality } from '@/lib/image-quality'
-import { captureLocation, formatLocation, isGeolocationAvailable, type GeoLocation } from '@/lib/geo'
+import { captureLocation, formatLocation, isGeolocationAvailable } from '@/lib/geo'
 import { toast } from 'sonner'
 import {
   Camera, Upload, RefreshCw, ArrowRight, CheckCircle2, XCircle, Loader2,

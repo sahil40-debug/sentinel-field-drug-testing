@@ -52,7 +52,7 @@ export async function analyseTestImage({
         },
       ],
       thinking: { type: 'disabled' },
-    })
+    } as any)
 
     const raw = response.choices?.[0]?.message?.content ?? ''
     if (!raw) return { ok: false, error: 'Model returned an empty response.' }
