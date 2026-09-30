@@ -107,23 +107,53 @@ export async function analyseTestImage({
     const mimeType = match[1]
     const base64Data = match[2]
 
-    const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash-lite',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: user },
-            { inlineData: { mimeType, data: base64Data } },
+    // Try these models in order — if one is deprecated/unavailable, the next is tried.
+    // This makes the code resilient to Google renaming/deprecating models.
+    const models = [
+      'gemini-3.5-flash-lite',
+      'gemini-2.5-flash-lite',
+      'gemini-2.0-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+    ]
+
+    let response: Awaited<ReturnType<typeof client.models.generateContent>> | null = null
+    let lastError = ''
+    for (const model of models) {
+      try {
+        response = await client.models.generateContent({
+          model,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: user },
+                { inlineData: { mimeType, data: base64Data } },
+              ],
+            },
           ],
-        },
-      ],
-      config: {
-        systemInstruction: system,
-        responseMimeType: 'application/json',
-        responseSchema,
-      },
-    })
+          config: {
+            systemInstruction: system,
+            responseMimeType: 'application/json',
+            responseSchema,
+          },
+        })
+        break // success
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : String(e)
+        // If it's a "model not found / deprecated" error, try the next model.
+        // For other errors (auth, quota, safety), stop and report.
+        if (/not found|no longer available|not supported/i.test(lastError)) {
+          continue
+        }
+        break
+      }
+    }
+
+    if (!response) {
+      return { ok: false, error: `No Gemini model was available. Last error: ${lastError}` }
+    }
 
     const raw = response.text ?? ''
     if (!raw) return { ok: false, error: 'Gemini returned an empty response.' }
