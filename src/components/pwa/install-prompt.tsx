@@ -54,19 +54,19 @@ export function InstallPrompt() {
     }
     window.addEventListener('beforeinstallprompt', handler)
 
-    // iOS Safari doesn't fire beforeinstallprompt — show the hint after 3s.
-    if (isIOS) {
-      const t = setTimeout(() => {
-        setShowIOSHint(true)
-        setVisible(true)
-      }, 3000)
-      return () => {
-        window.removeEventListener('beforeinstallprompt', handler)
-        clearTimeout(t)
-      }
+    // On iOS, beforeinstallprompt never fires — show the Share hint after 3s.
+    // On other browsers, ALSO show after 4s as a fallback (in case the event
+    // doesn't fire, e.g. the app meets install criteria but the browser
+    // hasn't fired it yet). The user can always dismiss.
+    const delay = isIOS ? 3000 : 4000
+    const t = setTimeout(() => {
+      if (isIOS) setShowIOSHint(true)
+      setVisible(true)
+    }, delay)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler)
+      clearTimeout(t)
     }
-
-    return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [authed])
 
   const handleInstall = async () => {
