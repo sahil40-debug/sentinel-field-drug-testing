@@ -454,8 +454,12 @@ export function CaptureStep() {
           ) : (
             <Card className="card-soft">
               <CardContent className="p-3 sm:p-4 space-y-4">
-                <div className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black grid place-items-center">
-                  <img src={capturedImage} alt="Captured field test" className="h-full w-full object-contain" />
+                {/* Captured photo — displayed at its NATURAL aspect ratio (no
+                    forced landscape box). A portrait photo shows portrait, a
+                    landscape photo shows landscape. Constrained to max 60vh so
+                    it doesn't overflow the viewport on small screens. */}
+                <div className="relative w-full max-h-[60vh] overflow-hidden rounded-2xl border bg-black flex items-center justify-center">
+                  <img src={capturedImage} alt="Captured field test" className="max-w-full max-h-[60vh] object-contain" />
                 </div>
                 <ImageQualityPanel quality={quality} loading={analysingQuality} />
                 <div className="flex flex-wrap gap-2">
