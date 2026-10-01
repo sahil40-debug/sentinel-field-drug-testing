@@ -85,7 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6 sm:py-8 pb-24 md:pb-8">{children}</main>
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6 sm:py-8 pb-28 md:pb-8">{children}</main>
 
       <footer className="border-t border-border/60 bg-background/60 backdrop-blur-sm mt-auto pb-20 md:pb-0">
         <div className="max-w-6xl mx-auto px-4 py-4 text-xs text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
