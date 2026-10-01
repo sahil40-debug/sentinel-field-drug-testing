@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { RegisterSW } from "@/components/pwa/register-sw";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
+import { SplashScreen } from "@/components/pwa/splash-screen";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,7 +33,7 @@ export const metadata: Metadata = {
   applicationName: "Sentinel",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "Sentinel",
   },
   icons: {
@@ -72,6 +73,7 @@ export default function RootLayout({
         <SonnerToaster richColors position="top-right" />
         <RegisterSW />
         <InstallPrompt />
+        <SplashScreen />
       </body>
     </html>
   );

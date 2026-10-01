@@ -42,9 +42,9 @@ export function LoginView() {
   }
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-2">
-      {/* Left — brand / editorial panel */}
-      <div className="relative hidden lg:flex flex-col justify-between p-12 overflow-hidden bg-primary text-primary-foreground">
+    <div className="min-h-screen lg:grid lg:grid-cols-2 flex flex-col">
+      {/* Brand / editorial panel — full-bleed banner on mobile, split left on desktop */}
+      <div className="relative flex flex-col justify-between overflow-hidden bg-primary text-primary-foreground lg:p-12 p-6 sm:p-8 pb-10 lg:min-h-screen">
         <div
           className="absolute inset-0 opacity-30"
           style={{
@@ -61,14 +61,14 @@ export function LoginView() {
           </div>
         </div>
 
-        <div className="relative space-y-6 max-w-md">
+        <div className="relative space-y-4 sm:space-y-6 max-w-md py-8 lg:py-0">
           <div className="display-eyebrow text-primary-foreground/70">SIH 2026 · PS-231</div>
-          <h1 className="font-serif-display text-5xl font-semibold leading-[1.05] tracking-tight">
+          <h1 className="font-serif-display text-4xl sm:text-5xl font-semibold leading-[1.05] tracking-tight">
             Presumptive field
             <br />
             <span className="italic font-medium opacity-90">drug testing,</span>
             <br />
-            digitised & verifiable.
+            digitised &amp; verifiable.
           </h1>
           <p className="text-sm opacity-80 leading-relaxed">
             Capture a colour-change test, let a vision model compare the reaction against the
@@ -84,17 +84,9 @@ export function LoginView() {
         <div className="relative text-xs opacity-60">Presumptive results only — not laboratory confirmation.</div>
       </div>
 
-      {/* Right — sign-in */}
-      <div className="grid place-items-center p-6 sm:p-12 bg-background">
+      {/* Sign-in */}
+      <div className="grid place-items-center p-6 sm:p-12 bg-background flex-1">
         <div className="w-full max-w-sm space-y-8">
-          <div className="lg:hidden flex items-center gap-3">
-            <LogoMark size={40} />
-            <div className="leading-tight">
-              <div className="font-serif-display text-lg font-semibold">Sentinel</div>
-              <div className="text-xs text-muted-foreground">Field Drug Testing Companion</div>
-            </div>
-          </div>
-
           <div className="space-y-1.5">
             <div className="display-eyebrow">Sign in</div>
             {/* Render 'Welcome' until mounted (server + first client render match),

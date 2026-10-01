@@ -84,10 +84,11 @@ export function CaptureStep() {
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number; id: number } | null>(null)
   const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Tap-to-focus: shows a brief focus ring + asks the camera to focus at the
-  // tapped point. The ring auto-hides after ~1.2s. If the camera doesn't
-  // support manual focus, we silently fall back to continuous autofocus
-  // (the browser default) so the preview never goes blurry.
+  // Tap-to-focus: shows a brief focus ring as visual feedback.
+  // We deliberately do NOT call applyConstraints() — switching focus modes
+  // causes a brief blur on most mobile cameras. Instead we let the browser's
+  // native continuous autofocus keep the preview sharp, and the ring is purely
+  // a cosmetic acknowledgement of the tap.
   const handleFocusTap = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!cameraOn || !videoReady) return
     const video = videoRef.current
@@ -99,33 +100,11 @@ export function CaptureStep() {
     const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
 
     // Show the ring with a unique id so the animation re-triggers each tap,
-    // then auto-hide it after 1.2s.
+    // then auto-hide it after 1.1s.
     const id = Date.now()
     setFocusPoint({ x, y, id })
     if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
-    focusTimeoutRef.current = setTimeout(() => setFocusPoint(null), 1200)
-
-    // Ask the camera to focus at this point (best-effort; mobile only).
-    const track = streamRef.current?.getVideoTracks?.()[0]
-    if (!track) return
-    try {
-      const caps = track.getCapabilities?.() as MediaTrackCapabilities & { focusMode?: string[]; pointsOfInterest?: unknown } | undefined
-      if (caps && 'focusMode' in caps && Array.isArray(caps.focusMode)) {
-        // Prefer continuous autofocus (stable, never blurs) if available,
-        // with a point of interest hint; otherwise fall back to manual at the point.
-        const useContinuous = caps.focusMode.includes('continuous')
-        const mode = useContinuous ? 'continuous' : caps.focusMode.includes('manual') ? 'manual' : null
-        if (mode) {
-          track.applyConstraints({
-            advanced: [
-              { focusMode: mode, pointsOfInterest: [{ x, y }] } as unknown as MediaTrackConstraintSet,
-            ],
-          })
-        }
-      }
-    } catch {
-      /* camera focus API not supported — browser's default autofocus keeps working */
-    }
+    focusTimeoutRef.current = setTimeout(() => setFocusPoint(null), 1100)
   }, [cameraOn, videoReady])
 
   const capture = useCallback(() => {
