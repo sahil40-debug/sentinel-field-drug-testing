@@ -10,6 +10,7 @@ import {
   History,
   ShieldCheck,
   LogOut,
+  Download,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -27,7 +28,7 @@ const NAV: NavItem[] = [
 ]
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { view, setView, logout, operatorId, analysis, resetFlow } = useApp()
+  const { view, setView, logout, operatorId, analysis, resetFlow, requestInstall } = useApp()
 
   const handleNewTest = () => {
     // If a result is showing from a previous test, start a fresh flow.
@@ -77,6 +78,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="ml-auto md:ml-0 flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={requestInstall} className="btn-pill gap-1.5 rounded-xl" aria-label="Install app">
+              <Download className="h-4 w-4" /> <span className="hidden sm:inline">Install</span>
+            </Button>
             <span className="hidden sm:inline pill bg-secondary/60 text-secondary-foreground">{operatorId}</span>
             <Button variant="ghost" size="sm" onClick={logout} className="gap-1.5 rounded-xl" aria-label="Logout">
               <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Logout</span>

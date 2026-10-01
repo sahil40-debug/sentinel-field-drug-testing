@@ -180,15 +180,12 @@ export function CaptureStep() {
     focusTimeoutRef.current = setTimeout(() => setFocusPoint(null), 1100)
   }, [cameraOn, videoReady])
 
-  // Capture what the user SEES in the preview, matching the preview's aspect
-  // ratio. The preview is object-cover in a container of aspect ratio R.
-  // We compute the visible crop of the video frame and draw only that, so a
-  // portrait preview yields a portrait photo, a landscape preview yields a
-  // landscape photo — just like a native camera app.
+  // Capture what the user SEES in the preview — the photo's aspect ratio
+  // matches the preview container exactly. Landscape preview → landscape
+  // photo; portrait preview → portrait photo. Works like a native camera app.
   const capture = useCallback(() => {
     const video = videoRef.current
-    const container = video?.parentElement
-    if (!video || !container || !videoReady) {
+    if (!video || !videoReady) {
       toast.error('Camera is still warming up. Please wait a second and try again.')
       return
     }
@@ -198,28 +195,40 @@ export function CaptureStep() {
       toast.error('Video frame not ready yet. Please try again.')
       return
     }
-    // The container's rendered aspect ratio = what the user sees.
-    const cRect = container.getBoundingClientRect()
-    const containerAspect = cRect.width / cRect.height
-    const videoAspect = vw / vh
-    // object-cover crops the video to fill the container. Compute the source
-    // crop (the part of the video frame that's visible).
+
+    // Use the video element's own rendered rect (= the container, since
+    // object-cover makes the video fill it). This is exactly what the user sees.
+    const rect = video.getBoundingClientRect()
+    const displayAspect = rect.width / rect.height
+
     let sx = 0, sy = 0, sw = vw, sh = vh
-    if (videoAspect > containerAspect) {
-      // Video is wider than container — crop sides
-      sw = vh * containerAspect
-      sx = (vw - sw) / 2
-    } else {
-      // Video is taller than container — crop top/bottom
-      sh = vw / containerAspect
-      sy = (vh - sh) / 2
+
+    // Only crop if we have valid display dimensions; otherwise capture the
+    // full frame as a safe fallback.
+    if (displayAspect && !isNaN(displayAspect) && rect.width > 0 && rect.height > 0) {
+      const videoAspect = vw / vh
+      if (videoAspect > displayAspect) {
+        // Video is wider than display — crop the sides (center crop)
+        sw = Math.round(vh * displayAspect)
+        sx = Math.round((vw - sw) / 2)
+        sh = vh
+        sy = 0
+      } else {
+        // Video is taller than display — crop top/bottom (center crop)
+        sh = Math.round(vw / displayAspect)
+        sy = Math.round((vh - sh) / 2)
+        sw = vw
+        sx = 0
+      }
     }
+
     const canvas = document.createElement('canvas')
-    canvas.width = Math.round(sw)
-    canvas.height = Math.round(sh)
+    canvas.width = sw
+    canvas.height = sh
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     if (isFrontCamera) {
+      // Mirror the captured photo for front camera (matches the mirrored preview)
       ctx.translate(canvas.width, 0)
       ctx.scale(-1, 1)
     }

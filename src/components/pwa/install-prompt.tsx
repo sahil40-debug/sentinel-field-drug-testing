@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/lib/store'
 import { Download, X, Share, MonitorSmartphone } from 'lucide-react'
@@ -34,11 +34,36 @@ function detectPlatform(): 'ios' | 'android' | 'desktop' {
  * Only shows when authed (not on the login page).
  */
 export function InstallPrompt() {
-  const { authed } = useApp()
+  const { authed, installRequested, clearInstallRequest } = useApp()
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [visible, setVisible] = useState(false)
   const [showInstructions, setShowInstructions] = useState(false)
   const platform = typeof window !== 'undefined' ? detectPlatform() : 'desktop'
+
+  // handleInstall — defined first so the installRequested effect can call it.
+  const handleInstall = useCallback(async () => {
+    if (deferredPrompt) {
+      await deferredPrompt.prompt()
+      const choice = await deferredPrompt.userChoice
+      if (choice.outcome === 'accepted' || choice.outcome === 'dismissed') {
+        setDeferredPrompt(null)
+        setVisible(false)
+      }
+      return
+    }
+    setShowInstructions(true)
+  }, [deferredPrompt])
+
+  // Respond to the header "Install" button
+  useEffect(() => {
+    if (!installRequested) return
+    // handleInstall may call setShowInstructions (setState) — this is the
+    // intended "user clicked install" reaction, not a cascading render.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    handleInstall()
+    clearInstallRequest()
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [installRequested, clearInstallRequest, handleInstall])
 
   useEffect(() => {
     if (!authed) return
@@ -66,21 +91,6 @@ export function InstallPrompt() {
       clearTimeout(t)
     }
   }, [authed])
-
-  const handleInstall = async () => {
-    // Native install path (Chrome/Edge where beforeinstallprompt fired)
-    if (deferredPrompt) {
-      await deferredPrompt.prompt()
-      const choice = await deferredPrompt.userChoice
-      if (choice.outcome === 'accepted' || choice.outcome === 'dismissed') {
-        setDeferredPrompt(null)
-        setVisible(false)
-      }
-      return
-    }
-    // No native prompt available — show instructions modal
-    setShowInstructions(true)
-  }
 
   const handleDismiss = () => {
     setVisible(false)

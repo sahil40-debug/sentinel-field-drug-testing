@@ -54,6 +54,11 @@ interface AppState {
   /** Fully reset the in-progress new-test flow (selected drug, image, location, colours, result). */
   resetFlow: () => void
 
+  // install prompt — triggered from the header button
+  installRequested: boolean
+  requestInstall: () => void
+  clearInstallRequest: () => void
+
   // selected record (for detail view)
   activeRecord: TestRecordDTO | null
   setActiveRecord: (r: TestRecordDTO | null) => void
@@ -114,6 +119,10 @@ export const useApp = create<AppState>((set) => ({
       verification: null,
       analysing: false,
     }),
+
+  installRequested: false,
+  requestInstall: () => set({ installRequested: true }),
+  clearInstallRequest: () => set({ installRequested: false }),
 
   activeRecord: null,
   setActiveRecord: (activeRecord) => set({ activeRecord }),
