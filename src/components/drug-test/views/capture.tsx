@@ -28,7 +28,6 @@ export function CaptureStep() {
   const [quality, setQuality] = useState<ImageQuality | null>(null)
   const [analysingQuality, setAnalysingQuality] = useState(false)
   const [locating, setLocating] = useState(false)
-  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null)
   const [showColourOverride, setShowColourOverride] = useState(false)
   const [isFrontCamera, setIsFrontCamera] = useState(false)
 
@@ -40,6 +39,7 @@ export function CaptureStep() {
     setVideoReady(false)
     setIsFrontCamera(false)
     setFocusPoint(null)
+    if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
   }, [])
 
   const startCamera = useCallback(async () => {
@@ -81,28 +81,50 @@ export function CaptureStep() {
 
   useEffect(() => () => stopCamera(), [stopCamera])
 
-  // Tap-to-focus: applies focus to the track at the tapped point.
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number; id: number } | null>(null)
+  const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Tap-to-focus: shows a brief focus ring + asks the camera to focus at the
+  // tapped point. The ring auto-hides after ~1.2s. If the camera doesn't
+  // support manual focus, we silently fall back to continuous autofocus
+  // (the browser default) so the preview never goes blurry.
   const handleFocusTap = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!cameraOn || !videoReady) return
     const video = videoRef.current
-    const track = streamRef.current?.getVideoTracks?.()[0]
-    if (!video || !track) return
+    if (!video) return
     const rect = video.getBoundingClientRect()
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY
     const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
-    setFocusPoint({ x, y })
-    // Apply focus if the camera supports it (mobile devices).
-    const caps = track.getCapabilities?.() as MediaTrackCapabilities & { focusMode?: string[]; pointsOfInterest?: unknown } | undefined
-    if (caps && 'focusMode' in caps && Array.isArray(caps.focusMode) && caps.focusMode.includes('manual')) {
-      try {
-        track.applyConstraints({
-          advanced: [{ focusMode: 'manual', pointsOfInterest: [{ x, y }] } as unknown as MediaTrackConstraintSet],
-        })
-      } catch {
-        /* focus not applicable — ignore */
+
+    // Show the ring with a unique id so the animation re-triggers each tap,
+    // then auto-hide it after 1.2s.
+    const id = Date.now()
+    setFocusPoint({ x, y, id })
+    if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
+    focusTimeoutRef.current = setTimeout(() => setFocusPoint(null), 1200)
+
+    // Ask the camera to focus at this point (best-effort; mobile only).
+    const track = streamRef.current?.getVideoTracks?.()[0]
+    if (!track) return
+    try {
+      const caps = track.getCapabilities?.() as MediaTrackCapabilities & { focusMode?: string[]; pointsOfInterest?: unknown } | undefined
+      if (caps && 'focusMode' in caps && Array.isArray(caps.focusMode)) {
+        // Prefer continuous autofocus (stable, never blurs) if available,
+        // with a point of interest hint; otherwise fall back to manual at the point.
+        const useContinuous = caps.focusMode.includes('continuous')
+        const mode = useContinuous ? 'continuous' : caps.focusMode.includes('manual') ? 'manual' : null
+        if (mode) {
+          track.applyConstraints({
+            advanced: [
+              { focusMode: mode, pointsOfInterest: [{ x, y }] } as unknown as MediaTrackConstraintSet,
+            ],
+          })
+        }
       }
+    } catch {
+      /* camera focus API not supported — browser's default autofocus keeps working */
     }
   }, [cameraOn, videoReady])
 
@@ -277,6 +299,7 @@ export function CaptureStep() {
                       </div>
                       {focusPoint && (
                         <div
+                          key={focusPoint.id}
                           className="absolute pointer-events-none"
                           style={{
                             left: `${focusPoint.x * 100}%`,
@@ -284,7 +307,7 @@ export function CaptureStep() {
                             transform: 'translate(-50%, -50%)',
                           }}
                         >
-                          <span className="block h-10 w-10 rounded-full border-2 border-white/80 animate-ping-slow" />
+                          <span className="block h-12 w-12 rounded-full border-2 border-white animate-ping-slow" />
                         </div>
                       )}
                     </>
