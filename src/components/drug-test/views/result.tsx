@@ -98,20 +98,11 @@ export function ResultStep() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+    <div className="space-y-5 sm:space-y-6">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <SectionHeading eyebrow="Step 3 of 3" title="Test result" sub={`${selectedDrug.target} · ${selectedDrug.testMethod}`} />
-        {savedRecord ? (
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={verifyNow} className="btn-pill gap-1.5 h-11">
-              <ShieldCheck className="h-4 w-4" /> Verify
-            </Button>
-            <Button onClick={startNew} className="btn-pill gap-1.5 h-11">
-              <Plus className="h-4 w-4" /> New test
-            </Button>
-          </div>
-        ) : (
-          <Button variant="ghost" onClick={() => setView('new-test')} className="btn-pill gap-1.5">
+        {!savedRecord && (
+          <Button variant="ghost" onClick={() => setView('new-test')} className="btn-pill gap-1.5 shrink-0">
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
         )}
@@ -119,9 +110,9 @@ export function ResultStep() {
 
       {/* Result hero card */}
       <Card className={`card-soft border-2 ${big.ring}`}>
-        <CardContent className="p-8 flex flex-col items-center text-center gap-3">
-          <BigIcon className={`h-16 w-16 ${big.color}`} strokeWidth={1.5} />
-          <div className={`text-5xl font-extrabold tracking-tight ${big.color} font-serif-display`}>
+        <CardContent className="p-6 sm:p-8 flex flex-col items-center text-center gap-3">
+          <BigIcon className={`h-14 w-14 sm:h-16 sm:w-16 ${big.color}`} strokeWidth={1.5} />
+          <div className={`text-4xl sm:text-5xl font-extrabold tracking-tight ${big.color} font-serif-display`}>
             {result.classification.toUpperCase()}
           </div>
           <div className="text-sm text-muted-foreground">
@@ -137,19 +128,19 @@ export function ResultStep() {
               <Badge variant="outline" className="rounded-full border-primary/40 text-primary bg-primary/5">Manual colour override used</Badge>
             )}
           </div>
-          <div className="pt-2"><PresumptiveNotice /></div>
+          <div className="pt-2 w-full"><PresumptiveNotice /></div>
         </CardContent>
       </Card>
 
       {/* Save CTA / saved confirmation */}
       {!savedRecord ? (
         <Card className="card-soft">
-          <CardContent className="p-5 flex flex-wrap items-center gap-3 justify-between">
+          <CardContent className="p-4 sm:p-5 space-y-3">
             <div>
               <div className="font-medium">Finalize this test record?</div>
               <p className="text-xs text-muted-foreground">Once finalized, the record and its integrity hash are stored. GPS location {location ? 'will be included' : 'will not be included (not captured)'}.</p>
             </div>
-            <Button onClick={save} disabled={saving} className="btn-pill gap-1.5 h-11 px-6">
+            <Button onClick={save} disabled={saving} className="btn-pill gap-1.5 h-11 w-full sm:w-auto sm:px-6">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save test record
             </Button>
@@ -157,13 +148,23 @@ export function ResultStep() {
         </Card>
       ) : (
         <Card className="card-soft border-emerald-200 bg-emerald-50/40">
-          <CardContent className="p-5 flex items-center gap-4 flex-wrap">
-            <ShieldCheck className="h-6 w-6 text-emerald-600 shrink-0" />
-            <div className="text-sm min-w-0">
-              <div className="font-medium">Record finalized: {savedRecord.recordNo}</div>
-              <div className="text-xs text-muted-foreground font-mono">
-                record hash {shortHash(savedRecord.recordHash)} · image hash {shortHash(savedRecord.imageHash)}
+          <CardContent className="p-4 sm:p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="h-6 w-6 text-emerald-600 shrink-0" />
+              <div className="text-sm min-w-0">
+                <div className="font-medium">Record finalized: {savedRecord.recordNo}</div>
+                <div className="text-xs text-muted-foreground font-mono break-all">
+                  record hash {shortHash(savedRecord.recordHash)} · image hash {shortHash(savedRecord.imageHash)}
+                </div>
               </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={verifyNow} className="btn-pill gap-1.5 h-11 flex-1">
+                <ShieldCheck className="h-4 w-4" /> Verify record
+              </Button>
+              <Button onClick={startNew} className="btn-pill gap-1.5 h-11 flex-1">
+                <Plus className="h-4 w-4" /> New test
+              </Button>
             </div>
           </CardContent>
         </Card>

@@ -8,9 +8,29 @@ import { Label } from '@/components/ui/label'
 import { LogoMark } from '../ui-bits'
 import { ShieldCheck, MapPin, Sparkles, ArrowRight } from 'lucide-react'
 
+const VISITED_KEY = 'sentinel_visited'
+
 export function LoginView() {
   const login = useApp((s) => s.login)
   const [officer, setOfficer] = useState('OFFICER-01')
+  // Detect returning visitor via lazy state initialiser (runs once, client-side).
+  const [returning, setReturning] = useState(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return !!window.localStorage.getItem(VISITED_KEY)
+    } catch {
+      return false
+    }
+  })
+
+  const handleSignIn = () => {
+    try {
+      window.localStorage.setItem(VISITED_KEY, '1')
+    } catch {
+      /* localStorage may be blocked — ignore */
+    }
+    login(officer)
+  }
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
@@ -68,8 +88,10 @@ export function LoginView() {
 
           <div className="space-y-1.5">
             <div className="display-eyebrow">Sign in</div>
-            <h2 className="display-heading text-3xl">Welcome back</h2>
-            <p className="text-sm text-muted-foreground">Enter your operator ID to continue.</p>
+            <h2 className="display-heading text-3xl">{returning ? 'Welcome back' : 'Welcome'}</h2>
+            <p className="text-sm text-muted-foreground">
+              {returning ? 'Enter your operator ID to continue.' : 'Enter your operator ID to begin.'}
+            </p>
           </div>
 
           <div className="space-y-4">
@@ -80,11 +102,11 @@ export function LoginView() {
                 value={officer}
                 onChange={(e) => setOfficer(e.target.value)}
                 placeholder="e.g. OFFICER-01"
-                onKeyDown={(e) => e.key === 'Enter' && login(officer)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
                 className="rounded-xl"
               />
             </div>
-            <Button className="btn-pill w-full h-11 text-sm" size="lg" onClick={() => login(officer)}>
+            <Button className="btn-pill w-full h-11 text-sm" size="lg" onClick={handleSignIn}>
               Sign in <ArrowRight className="h-4 w-4" />
             </Button>
           </div>

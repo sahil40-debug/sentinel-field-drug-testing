@@ -10,7 +10,7 @@ import { captureLocation, formatLocation, isGeolocationAvailable } from '@/lib/g
 import { toast } from 'sonner'
 import {
   Camera, Upload, RefreshCw, ArrowRight, CheckCircle2, XCircle, Loader2,
-  ArrowLeft, MapPin, LocateFixed, Palette,
+  ArrowLeft, MapPin, LocateFixed, Palette, Crosshair, ChevronDown,
 } from 'lucide-react'
 
 export function CaptureStep() {
@@ -28,9 +28,8 @@ export function CaptureStep() {
   const [quality, setQuality] = useState<ImageQuality | null>(null)
   const [analysingQuality, setAnalysingQuality] = useState(false)
   const [locating, setLocating] = useState(false)
-  // Whether the active camera is the front (user-facing) one — the preview is
-  // mirrored in that case so it feels like a mirror, and the captured photo is
-  // flipped to match what the officer saw on screen. Rear cameras are NOT mirrored.
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null)
+  const [showColourOverride, setShowColourOverride] = useState(false)
   const [isFrontCamera, setIsFrontCamera] = useState(false)
 
   const stopCamera = useCallback(() => {
@@ -40,13 +39,13 @@ export function CaptureStep() {
     setCameraOn(false)
     setVideoReady(false)
     setIsFrontCamera(false)
+    setFocusPoint(null)
   }, [])
 
   const startCamera = useCallback(async () => {
     setCamError(null)
     setVideoReady(false)
     try {
-      // Prefer the rear (environment) camera — the natural orientation for field use.
       let stream: MediaStream | null = null
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -54,18 +53,15 @@ export function CaptureStep() {
           audio: false,
         })
       } catch {
-        // Fallback: any camera (desktops often only have a front webcam)
         stream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 960 } },
           audio: false,
         })
       }
       streamRef.current = stream
-      // Detect front camera: the track label usually contains "front" or "user".
       const track = stream.getVideoTracks()[0]
       const label = (track?.label || '').toLowerCase()
       const front = label.includes('front') || label.includes('user') || label.includes('facetime')
-      // facingMode setting from the track capabilities is the most reliable signal
       const caps = track?.getCapabilities?.() as MediaTrackCapabilities & { facingMode?: string[] } | undefined
       const facing = caps?.facingMode
       const isFront = facing ? facing.includes('user') : front
@@ -85,6 +81,31 @@ export function CaptureStep() {
 
   useEffect(() => () => stopCamera(), [stopCamera])
 
+  // Tap-to-focus: applies focus to the track at the tapped point.
+  const handleFocusTap = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    if (!cameraOn || !videoReady) return
+    const video = videoRef.current
+    const track = streamRef.current?.getVideoTracks?.()[0]
+    if (!video || !track) return
+    const rect = video.getBoundingClientRect()
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
+    setFocusPoint({ x, y })
+    // Apply focus if the camera supports it (mobile devices).
+    const caps = track.getCapabilities?.() as MediaTrackCapabilities & { focusMode?: string[]; pointsOfInterest?: unknown } | undefined
+    if (caps && 'focusMode' in caps && Array.isArray(caps.focusMode) && caps.focusMode.includes('manual')) {
+      try {
+        track.applyConstraints({
+          advanced: [{ focusMode: 'manual', pointsOfInterest: [{ x, y }] } as unknown as MediaTrackConstraintSet],
+        })
+      } catch {
+        /* focus not applicable — ignore */
+      }
+    }
+  }, [cameraOn, videoReady])
+
   const capture = useCallback(() => {
     const video = videoRef.current
     if (!video || !videoReady) {
@@ -102,8 +123,6 @@ export function CaptureStep() {
     canvas.height = h
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    // Mirror the captured photo to match the mirrored preview (front camera only),
-    // so what the officer saw on screen is exactly what gets stored.
     if (isFrontCamera) {
       ctx.translate(w, 0)
       ctx.scale(-1, 1)
@@ -192,14 +211,14 @@ export function CaptureStep() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <SectionHeading
           eyebrow="Step 2 of 3"
           title="Capture & locate"
           sub="Photograph or upload the completed field test, then stamp the GPS location."
         />
-        <Button variant="ghost" size="sm" onClick={() => setView('new-test')} className="gap-1 btn-pill">
+        <Button variant="ghost" size="sm" onClick={() => setView('new-test')} className="gap-1 btn-pill shrink-0">
           <ArrowLeft className="h-4 w-4" /> Change substance
         </Button>
       </div>
@@ -207,7 +226,7 @@ export function CaptureStep() {
       {/* Selected test strip */}
       <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card/80 backdrop-blur-sm px-4 py-3">
         <span className="h-9 w-9 rounded-xl border border-black/5 shrink-0" style={{ backgroundColor: selectedDrug.expectedHex }} />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="font-medium truncate">{selectedDrug.target}</div>
           <div className="text-xs text-muted-foreground truncate">
             {selectedDrug.testMethod} · expects {selectedDrug.expectedColor}
@@ -215,13 +234,17 @@ export function CaptureStep() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Capture / preview */}
+      {/* Capture / preview — full width on mobile, 2/3 on desktop */}
+      <div className="grid lg:grid-cols-3 gap-5 sm:gap-6">
         <div className="lg:col-span-2 space-y-4">
           {!capturedImage ? (
             <Card className="card-soft">
-              <CardContent className="p-4 space-y-4">
-                <div className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black grid place-items-center">
+              <CardContent className="p-3 sm:p-4 space-y-4">
+                <div
+                  className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black grid place-items-center cursor-crosshair"
+                  onClick={handleFocusTap}
+                  onTouchStart={handleFocusTap}
+                >
                   <video
                     ref={videoRef}
                     className={`h-full w-full object-contain ${isFrontCamera ? 'scale-x-[-1]' : ''}`}
@@ -247,6 +270,25 @@ export function CaptureStep() {
                       </span>
                     </div>
                   )}
+                  {cameraOn && videoReady && (
+                    <>
+                      <div className="absolute top-2 left-2 pill bg-black/60 text-white/90 backdrop-blur-sm text-[11px]">
+                        <Crosshair className="h-3 w-3" /> Tap to focus
+                      </div>
+                      {focusPoint && (
+                        <div
+                          className="absolute pointer-events-none"
+                          style={{
+                            left: `${focusPoint.x * 100}%`,
+                            top: `${focusPoint.y * 100}%`,
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                        >
+                          <span className="block h-10 w-10 rounded-full border-2 border-white/80 animate-ping-slow" />
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
 
                 {camError && (
@@ -255,44 +297,44 @@ export function CaptureStep() {
 
                 <div className="flex flex-wrap gap-2">
                   {!cameraOn ? (
-                    <Button onClick={startCamera} variant="default" className="btn-pill gap-1.5 h-10">
+                    <Button onClick={startCamera} variant="default" className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
                       <Camera className="h-4 w-4" /> Start camera
                     </Button>
                   ) : (
-                    <Button onClick={capture} disabled={!videoReady} className="btn-pill gap-1.5 h-10">
+                    <Button onClick={capture} disabled={!videoReady} className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
                       {videoReady ? <Camera className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
                       Capture image
                     </Button>
                   )}
-                  <Button onClick={() => document.getElementById('upload-input')?.click()} variant="outline" className="btn-pill gap-1.5 h-10">
-                    <Upload className="h-4 w-4" /> Upload image
+                  <Button onClick={() => document.getElementById('upload-input')?.click()} variant="outline" className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
+                    <Upload className="h-4 w-4" /> Upload
                   </Button>
                   <input id="upload-input" type="file" accept="image/*" className="hidden" onChange={onUpload} />
                   {cameraOn && (
-                    <Button onClick={stopCamera} variant="ghost" className="btn-pill h-10">Stop camera</Button>
+                    <Button onClick={stopCamera} variant="ghost" className="btn-pill h-11">Stop</Button>
                   )}
                 </div>
               </CardContent>
             </Card>
           ) : (
             <Card className="card-soft">
-              <CardContent className="p-4 space-y-4">
+              <CardContent className="p-3 sm:p-4 space-y-4">
                 <div className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black grid place-items-center">
                   <img src={capturedImage} alt="Captured field test" className="h-full w-full object-contain" />
                 </div>
                 <ImageQualityPanel quality={quality} loading={analysingQuality} />
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={reset} className="btn-pill gap-1.5 h-10">
+                  <Button variant="outline" onClick={reset} className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
                     <RefreshCw className="h-4 w-4" /> Retake
                   </Button>
                   <Button
                     onClick={runAnalysis}
                     disabled={quality?.status === 'poor' || analysingQuality}
-                    className="btn-pill gap-1.5 h-10 ml-auto"
+                    className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none order-last sm:order-none sm:ml-auto"
                   >
                     <ArrowRight className="h-4 w-4" /> Analyze test
                   </Button>
-                  <Button variant="ghost" onClick={() => document.getElementById('upload-input2')?.click()} className="btn-pill gap-1.5 h-10">
+                  <Button variant="ghost" onClick={() => document.getElementById('upload-input2')?.click()} className="btn-pill gap-1.5 h-11">
                     <Upload className="h-4 w-4" /> Replace
                   </Button>
                   <input id="upload-input2" type="file" accept="image/*" className="hidden" onChange={onUpload} />
@@ -302,10 +344,11 @@ export function CaptureStep() {
           )}
         </div>
 
-        {/* GPS panel */}
+        {/* Side panel: GPS + manual colour + tip */}
         <div className="space-y-4">
+          {/* GPS */}
           <Card className="card-soft">
-            <CardContent className="p-5 space-y-4">
+            <CardContent className="p-4 sm:p-5 space-y-3">
               <div className="flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-primary" />
                 <span className="display-eyebrow m-0">GPS location</span>
@@ -317,9 +360,9 @@ export function CaptureStep() {
                       <CheckCircle2 className="h-4 w-4" />
                       <span className="font-medium">Location captured</span>
                     </div>
-                    <p className="text-xs text-emerald-700/90 mt-1.5 leading-relaxed">{formatLocation(location)}</p>
+                    <p className="text-xs text-emerald-700/90 mt-1.5 leading-relaxed break-words">{formatLocation(location)}</p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={grabLocation} disabled={locating} className="btn-pill gap-1.5 w-full">
+                  <Button variant="outline" size="sm" onClick={grabLocation} disabled={locating} className="btn-pill gap-1.5 w-full h-10">
                     {locating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}
                     Re-capture
                   </Button>
@@ -328,65 +371,79 @@ export function CaptureStep() {
                 <div className="space-y-3">
                   <p className="text-sm text-muted-foreground">
                     {isGeolocationAvailable()
-                      ? 'Stamp this test with the current GPS coordinates. Optional but recommended for chain-of-custody.'
+                      ? 'Stamp this test with the current GPS coordinates. Recommended for chain-of-custody.'
                       : 'Geolocation is not available in this browser. You can still proceed without location.'}
                   </p>
                   {isGeolocationAvailable() && (
-                    <Button onClick={grabLocation} disabled={locating} className="btn-pill gap-1.5 w-full">
+                    <Button onClick={grabLocation} disabled={locating} className="btn-pill gap-1.5 w-full h-10">
                       {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
                       Capture location
                     </Button>
                   )}
                 </div>
               )}
-              <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
-                Coordinates are stored on the record and protected by the tamper-evident hash. Your browser will ask permission.
-              </p>
             </CardContent>
           </Card>
 
-          {/* Manual colour override — used when the photo didn't capture colours clearly */}
+          {/* Manual colour override — collapsible, with discoverability hint */}
           <Card className="card-soft">
-            <CardContent className="p-5 space-y-4">
-              <div className="flex items-center gap-2">
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <button
+                onClick={() => setShowColourOverride((s) => !s)}
+                className="w-full flex items-center gap-2 text-left"
+                aria-expanded={showColourOverride}
+              >
                 <Palette className="h-4 w-4 text-primary" />
-                <span className="display-eyebrow m-0">Manual colour override</span>
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                If the photo didn&apos;t capture the colours clearly (bad light, cheap camera, glare),
-                pick the colours you see on the ground so the analysis can use them.
-              </p>
-
-              <ColourPickerRow
-                label="Reference card colour"
-                hint="The colour of the printed reference card in-frame"
-                value={manualReferenceHex}
-                onChange={setManualReferenceHex}
-                suggested={selectedDrug.expectedHex}
-              />
-              <ColourPickerRow
-                label="Reaction colour"
-                hint="The colour the reaction area changed to"
-                value={manualReactionHex}
-                onChange={setManualReactionHex}
-                suggested={selectedDrug.expectedHex}
-              />
-
+                <span className="display-eyebrow m-0 flex-1">Manual colour override</span>
+                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showColourOverride ? 'rotate-180' : ''}`} />
+              </button>
               {(manualReferenceHex || manualReactionHex) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="btn-pill gap-1.5 w-full text-xs"
-                  onClick={() => { setManualReferenceHex(null); setManualReactionHex(null) }}
-                >
-                  <RefreshCw className="h-3.5 w-3.5" /> Clear overrides
-                </Button>
+                <div className="pill bg-primary/10 text-primary border border-primary/20 text-[11px]">
+                  Override active
+                </div>
+              )}
+              {!showColourOverride && !(manualReferenceHex || manualReactionHex) && (
+                <p className="text-xs text-muted-foreground">
+                  Photo too dark or colours washed out? Tap here to pick the colours you see manually.
+                </p>
+              )}
+              {showColourOverride && (
+                <div className="space-y-3 pt-1">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    If the photo didn&apos;t capture the colours clearly (bad light, cheap camera, glare),
+                    pick the colours you see on the ground so the analysis uses them.
+                  </p>
+                  <ColourPickerRow
+                    label="Reference card colour"
+                    hint="The colour of the printed reference card"
+                    value={manualReferenceHex}
+                    onChange={setManualReferenceHex}
+                    suggested={selectedDrug.expectedHex}
+                  />
+                  <ColourPickerRow
+                    label="Reaction colour"
+                    hint="The colour the reaction area changed to"
+                    value={manualReactionHex}
+                    onChange={setManualReactionHex}
+                    suggested={selectedDrug.expectedHex}
+                  />
+                  {(manualReferenceHex || manualReactionHex) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="btn-pill gap-1.5 w-full text-xs h-9"
+                      onClick={() => { setManualReferenceHex(null); setManualReactionHex(null) }}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> Clear overrides
+                    </Button>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
 
           <Card className="card-soft bg-accent/20">
-            <CardContent className="p-5 space-y-2">
+            <CardContent className="p-4 sm:p-5 space-y-2">
               <div className="display-eyebrow">Tip</div>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 For best results, capture under even lighting, include the printed reference colour card, and fill the frame with the reaction area.
@@ -395,6 +452,49 @@ export function CaptureStep() {
           </Card>
         </div>
       </div>
+    </div>
+  )
+}
+
+function ImageQualityPanel({ quality, loading }: { quality: ImageQuality | null; loading: boolean }) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-muted/40 p-3 sm:p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Image quality</span>
+        {loading ? (
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" /> analysing…
+          </span>
+        ) : quality ? (
+          <span
+            className={`text-xs font-semibold ${
+              quality.status === 'good'
+                ? 'text-emerald-600'
+                : quality.status === 'acceptable'
+                  ? 'text-amber-600'
+                  : 'text-rose-600'
+            }`}
+          >
+            ● {quality.status === 'good' ? 'Good' : quality.status === 'acceptable' ? 'Acceptable' : 'Poor'}
+          </span>
+        ) : null}
+      </div>
+      <ul className="grid sm:grid-cols-2 gap-1.5">
+        {quality?.checks.map((c) => (
+          <li key={c.label} className="flex items-center gap-2 text-xs">
+            {c.ok ? (
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+            )}
+            <span className={c.ok ? '' : 'text-rose-700'}>{c.label}</span>
+            <span className="text-muted-foreground ml-auto truncate">{c.detail}</span>
+          </li>
+        ))}
+      </ul>
+      {quality?.status === 'poor' && (
+        <p className="text-xs text-rose-700">Image is too low quality for reliable analysis. Please retake.</p>
+      )}
     </div>
   )
 }
@@ -425,7 +525,7 @@ function ColourPickerRow({
             <span className="text-xs font-mono text-muted-foreground uppercase">{value}</span>
           )}
           <span
-            className="h-9 w-9 rounded-xl border border-black/10 shadow-[inset_0_0_0_1px_oklch(1_0_0/0.4)] grid place-items-center overflow-hidden relative"
+            className="h-9 w-9 rounded-xl border border-black/10 grid place-items-center overflow-hidden relative"
             style={{ backgroundColor: value ?? 'transparent' }}
           >
             {!value && <Palette className="h-4 w-4 text-muted-foreground/50" />}
@@ -443,49 +543,6 @@ function ColourPickerRow({
         <button onClick={useSuggested} className="text-xs text-primary hover:underline">
           Use expected colour ({suggested})
         </button>
-      )}
-    </div>
-  )
-}
-
-function ImageQualityPanel({ quality, loading }: { quality: ImageQuality | null; loading: boolean }) {
-  return (
-    <div className="rounded-2xl border border-border/70 bg-muted/40 p-4 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Image quality</span>
-        {loading ? (
-          <span className="text-xs text-muted-foreground flex items-center gap-1">
-            <Loader2 className="h-3 w-3 animate-spin" /> analysing…
-          </span>
-        ) : quality ? (
-          <span
-            className={`text-xs font-semibold ${
-              quality.status === 'good'
-                ? 'text-emerald-600'
-                : quality.status === 'acceptable'
-                  ? 'text-amber-600'
-                  : 'text-rose-600'
-            }`}
-          >
-            ● {quality.status === 'good' ? 'Good' : quality.status === 'acceptable' ? 'Acceptable' : 'Poor'}
-          </span>
-        ) : null}
-      </div>
-      <ul className="grid sm:grid-cols-2 gap-1.5">
-        {quality?.checks.map((c) => (
-          <li key={c.label} className="flex items-center gap-2 text-xs">
-            {c.ok ? (
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-            ) : (
-              <XCircle className="h-3.5 w-3.5 text-rose-600" />
-            )}
-            <span className={c.ok ? '' : 'text-rose-700'}>{c.label}</span>
-            <span className="text-muted-foreground ml-auto">{c.detail}</span>
-          </li>
-        ))}
-      </ul>
-      {quality?.status === 'poor' && (
-        <p className="text-xs text-rose-700">Image is too low quality for reliable analysis. Please retake.</p>
       )}
     </div>
   )

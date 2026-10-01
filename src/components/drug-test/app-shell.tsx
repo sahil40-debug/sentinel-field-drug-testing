@@ -35,18 +35,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setView('new-test')
   }
 
+  const goDashboard = () => setView('dashboard')
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Top bar */}
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto flex h-16 items-center gap-3 px-4">
-          <div className="flex items-center gap-2.5">
+          {/* Clickable brand -> dashboard */}
+          <button
+            onClick={goDashboard}
+            className="flex items-center gap-2.5 group rounded-xl -ml-1 px-1 py-1 transition hover:bg-accent/40"
+            aria-label="Go to dashboard"
+          >
             <LogoMark size={34} />
-            <div className="leading-tight">
-              <div className="font-serif-display text-base font-semibold">Sentinel</div>
-              <div className="text-[10px] text-muted-foreground tracking-wide">Field Drug Testing · SIH 2026</div>
+            <div className="leading-tight text-left">
+              <div className="font-serif-display text-base font-semibold group-hover:text-primary transition-colors">Sentinel</div>
+              <div className="text-[10px] text-muted-foreground tracking-wide hidden sm:block">Field Drug Testing · SIH 2026</div>
             </div>
-          </div>
+          </button>
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1 mx-auto">
@@ -71,37 +78,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <div className="ml-auto md:ml-0 flex items-center gap-2">
             <span className="hidden sm:inline pill bg-secondary/60 text-secondary-foreground">{operatorId}</span>
-            <Button variant="ghost" size="sm" onClick={logout} className="gap-1.5 rounded-xl">
+            <Button variant="ghost" size="sm" onClick={logout} className="gap-1.5 rounded-xl" aria-label="Logout">
               <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Logout</span>
             </Button>
           </div>
         </div>
-
-        {/* Mobile nav */}
-        <nav className="md:hidden flex gap-1 overflow-x-auto px-3 pb-2.5 scroll-soft">
-          {NAV.map((item) => {
-            const Icon = item.icon
-            const active = view === item.view
-            const onClick = item.view === 'new-test' ? handleNewTest : () => setView(item.view)
-            return (
-              <Button
-                key={item.view}
-                variant={active ? 'default' : 'ghost'}
-                size="sm"
-                onClick={onClick}
-                className={cn('btn-pill gap-1.5 shrink-0 h-11 min-w-[44px]', active && 'shadow-sm')}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Button>
-            )
-          })}
-        </nav>
       </header>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-8">{children}</main>
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6 sm:py-8 pb-24 md:pb-8">{children}</main>
 
-      <footer className="border-t border-border/60 bg-background/60 backdrop-blur-sm mt-auto">
+      <footer className="border-t border-border/60 bg-background/60 backdrop-blur-sm mt-auto pb-20 md:pb-0">
         <div className="max-w-6xl mx-auto px-4 py-4 text-xs text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="font-serif-display font-medium text-foreground/80">Sentinel</span>
           <span className="opacity-40">·</span>
@@ -110,6 +96,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="hidden sm:inline">Presumptive results only — not laboratory confirmation.</span>
         </div>
       </footer>
+
+      {/* Mobile bottom nav — outside header so `fixed` anchors to viewport */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
+        <div className="grid grid-cols-4 max-w-md mx-auto">
+          {NAV.map((item) => {
+            const Icon = item.icon
+            const active = view === item.view
+            const onClick = item.view === 'new-test' ? handleNewTest : () => setView(item.view)
+            return (
+              <button
+                key={item.view}
+                onClick={onClick}
+                className={cn(
+                  'flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors',
+                  active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+                )}
+                aria-label={item.label}
+                aria-current={active ? 'page' : undefined}
+              >
+                <Icon className={cn('h-5 w-5 transition-transform', active && 'scale-110')} strokeWidth={active ? 2.4 : 2} />
+                <span>{item.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </nav>
     </div>
   )
 }

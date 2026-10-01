@@ -172,3 +172,13 @@
   .scroll-soft::-webkit-scrollbar-thumb { background: oklch(0.7 0.04 295); border-radius: 999px; }
   .scroll-soft::-webkit-scrollbar-track { background: transparent; }
 }
+
+/* Tap-to-focus ring animation (camera focus indicator) */
+@keyframes ping-slow {
+  0% { transform: scale(0.6); opacity: 1; }
+  70% { transform: scale(1.4); opacity: 0; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+.animate-ping-slow {
+  animation: ping-slow 0.9s ease-out;
+}
