@@ -12,7 +12,7 @@ import { LogoMark } from '@/components/drug-test/ui-bits'
  * users within the same browser session.
  */
 const SESSION_KEY = 'sentinel_splash_shown'
-const SPLASH_MS = 1200
+const SPLASH_MS = 2400
 
 export function SplashScreen() {
   const [show, setShow] = useState(false)
@@ -40,22 +40,27 @@ export function SplashScreen() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] grid place-items-center bg-primary text-primary-foreground animate-in fade-in duration-200"
+      className="fixed inset-0 z-[100] grid place-items-center bg-primary text-primary-foreground animate-in fade-in duration-300"
       style={{
         backgroundImage:
           'radial-gradient(at 20% 20%, oklch(0.55 0.1 295) 0px, transparent 50%), radial-gradient(at 80% 60%, oklch(0.5 0.1 320) 0px, transparent 50%), radial-gradient(at 50% 95%, oklch(0.6 0.08 175) 0px, transparent 55%)',
       }}
     >
-      <div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-500">
-        <LogoMark size={72} />
+      <div className="flex flex-col items-center gap-5 animate-in zoom-in-95 duration-700">
+        <LogoMark size={80} />
         <div className="text-center">
-          <div className="font-serif-display text-2xl font-semibold">Sentinel</div>
-          <div className="text-xs opacity-70 tracking-wide mt-1">Field Drug Testing Companion</div>
+          <div className="font-serif-display text-3xl font-semibold tracking-tight">Sentinel</div>
+          <div className="text-xs opacity-70 tracking-[0.18em] uppercase mt-1.5">Field Drug Testing Companion</div>
         </div>
-        <div className="mt-2 h-1 w-16 rounded-full bg-primary-foreground/30 overflow-hidden">
-          <div className="h-full w-1/2 bg-primary-foreground animate-pulse" />
+        {/* progress bar — fills over ~2s so the longer wait feels intentional */}
+        <div className="mt-3 h-1 w-24 rounded-full bg-primary-foreground/20 overflow-hidden">
+          <div
+            className="h-full bg-primary-foreground/90"
+            style={{ animation: 'splash-progress 2.2s ease-out forwards' }}
+          />
         </div>
       </div>
+      <style>{`@keyframes splash-progress { from { width: 0% } to { width: 100% } }`}</style>
     </div>
   )
 }

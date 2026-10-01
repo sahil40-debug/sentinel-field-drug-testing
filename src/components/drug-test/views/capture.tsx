@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import {
   Camera, Upload, RefreshCw, ArrowRight, CheckCircle2, XCircle, Loader2,
   ArrowLeft, MapPin, LocateFixed, Palette, Crosshair, ChevronDown,
+  Maximize2, Minimize2, SwitchCamera, X,
 } from 'lucide-react'
 
 export function CaptureStep() {
@@ -30,6 +31,8 @@ export function CaptureStep() {
   const [locating, setLocating] = useState(false)
   const [showColourOverride, setShowColourOverride] = useState(false)
   const [isFrontCamera, setIsFrontCamera] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [switching, setSwitching] = useState(false)
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -42,14 +45,16 @@ export function CaptureStep() {
     if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
   }, [])
 
-  const startCamera = useCallback(async () => {
+  // Start the camera with the requested facing mode ('environment' = rear,
+  // 'user' = front). Falls back to any camera if the requested one isn't available.
+  const startCamera = useCallback(async (facing: 'environment' | 'user' = 'environment') => {
     setCamError(null)
     setVideoReady(false)
     try {
       let stream: MediaStream | null = null
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } },
+          video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 960 } },
           audio: false,
         })
       } catch {
@@ -63,8 +68,8 @@ export function CaptureStep() {
       const label = (track?.label || '').toLowerCase()
       const front = label.includes('front') || label.includes('user') || label.includes('facetime')
       const caps = track?.getCapabilities?.() as MediaTrackCapabilities & { facingMode?: string[] } | undefined
-      const facing = caps?.facingMode
-      const isFront = facing ? facing.includes('user') : front
+      const facingCap = caps?.facingMode
+      const isFront = facingCap ? facingCap.includes('user') : (facing === 'user' || front)
       setIsFrontCamera(isFront)
       setCameraOn(true)
       await new Promise((r) => requestAnimationFrame(() => r(null)))
@@ -78,6 +83,41 @@ export function CaptureStep() {
       setCameraOn(false)
     }
   }, [])
+
+  // Switch between front and back cameras without closing the camera UI.
+  const switchCamera = useCallback(async () => {
+    if (switching) return
+    setSwitching(true)
+    const nextFacing: 'environment' | 'user' = isFrontCamera ? 'environment' : 'user'
+    // Stop the current stream first.
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    if (videoRef.current) videoRef.current.srcObject = null
+    setVideoReady(false)
+    setFocusPoint(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: nextFacing, width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false,
+      })
+      streamRef.current = stream
+      const track = stream.getVideoTracks()[0]
+      const caps = track?.getCapabilities?.() as MediaTrackCapabilities & { facingMode?: string[] } | undefined
+      const facingCap = caps?.facingMode
+      const isFront = facingCap ? facingCap.includes('user') : nextFacing === 'user'
+      setIsFrontCamera(isFront)
+      const video = videoRef.current
+      if (video) {
+        video.srcObject = stream
+        await video.play()
+        setVideoReady(true)
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not switch camera')
+    } finally {
+      setSwitching(false)
+    }
+  }, [isFrontCamera, switching])
 
   useEffect(() => () => stopCamera(), [stopCamera])
 
@@ -248,7 +288,7 @@ export function CaptureStep() {
                 >
                   <video
                     ref={videoRef}
-                    className={`h-full w-full object-contain ${isFrontCamera ? 'scale-x-[-1]' : ''}`}
+                    className={`h-full w-full object-cover ${isFrontCamera ? 'scale-x-[-1]' : ''}`}
                     playsInline
                     muted
                     autoPlay
@@ -267,7 +307,7 @@ export function CaptureStep() {
                   {cameraOn && !videoReady && (
                     <div className="absolute inset-0 grid place-items-center bg-black/60 text-white/80 text-sm">
                       <span className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" /> Starting camera…
+                        <Loader2 className="h-4 w-4 animate-spin" /> {switching ? 'Switching camera…' : 'Starting camera…'}
                       </span>
                     </div>
                   )}
@@ -275,6 +315,24 @@ export function CaptureStep() {
                     <>
                       <div className="absolute top-2 left-2 pill bg-black/60 text-white/90 backdrop-blur-sm text-[11px]">
                         <Crosshair className="h-3 w-3" /> Tap to focus
+                      </div>
+                      {/* Expand + camera switch controls (top-right) */}
+                      <div className="absolute top-2 right-2 flex gap-1.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setExpanded(true) }}
+                          className="grid place-items-center h-9 w-9 rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80 transition"
+                          aria-label="Expand camera"
+                        >
+                          <Maximize2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); switchCamera() }}
+                          disabled={switching}
+                          className="grid place-items-center h-9 w-9 rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80 transition disabled:opacity-50"
+                          aria-label="Switch camera"
+                        >
+                          {switching ? <Loader2 className="h-4 w-4 animate-spin" /> : <SwitchCamera className="h-4 w-4" />}
+                        </button>
                       </div>
                       {focusPoint && (
                         <div
@@ -299,7 +357,7 @@ export function CaptureStep() {
 
                 <div className="flex flex-wrap gap-2">
                   {!cameraOn ? (
-                    <Button onClick={startCamera} variant="default" className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
+                    <Button onClick={() => startCamera('environment')} variant="default" className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
                       <Camera className="h-4 w-4" /> Start camera
                     </Button>
                   ) : (
@@ -454,6 +512,85 @@ export function CaptureStep() {
           </Card>
         </div>
       </div>
+
+      {/* Expanded / fullscreen camera overlay */}
+      {expanded && cameraOn && (
+        <div className="fixed inset-0 z-[90] bg-black animate-in fade-in duration-200 flex flex-col">
+          {/* Top bar: close + camera label */}
+          <div className="flex items-center justify-between px-4 pt-4 pb-2" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+            <div className="text-white/80 text-sm font-medium">
+              {isFrontCamera ? 'Front camera' : 'Rear camera'}
+            </div>
+            <button
+              onClick={() => setExpanded(false)}
+              className="grid place-items-center h-10 w-10 rounded-full bg-white/10 text-white hover:bg-white/20 transition"
+              aria-label="Exit fullscreen"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          {/* Video — fills the screen, tap to focus */}
+          <div
+            className="flex-1 relative overflow-hidden cursor-crosshair"
+            onClick={handleFocusTap}
+            onTouchStart={handleFocusTap}
+          >
+            <video
+              className={`h-full w-full object-cover ${isFrontCamera ? 'scale-x-[-1]' : ''}`}
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+            />
+            {cameraOn && videoReady && (
+              <>
+                <div className="absolute top-3 left-3 pill bg-black/60 text-white/90 backdrop-blur-sm text-[11px]">
+                  <Crosshair className="h-3 w-3" /> Tap to focus
+                </div>
+                {focusPoint && (
+                  <div
+                    key={focusPoint.id}
+                    className="absolute pointer-events-none"
+                    style={{
+                      left: `${focusPoint.x * 100}%`,
+                      top: `${focusPoint.y * 100}%`,
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  >
+                    <span className="block h-14 w-14 rounded-full border-2 border-white animate-ping-slow" />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          {/* Bottom controls: switch + capture */}
+          <div className="flex items-center justify-center gap-6 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3">
+            <button
+              onClick={switchCamera}
+              disabled={switching}
+              className="grid place-items-center h-14 w-14 rounded-full bg-white/10 text-white hover:bg-white/20 transition disabled:opacity-50"
+              aria-label="Switch camera"
+            >
+              {switching ? <Loader2 className="h-6 w-6 animate-spin" /> : <SwitchCamera className="h-6 w-6" />}
+            </button>
+            <button
+              onClick={() => { capture(); setExpanded(false) }}
+              disabled={!videoReady}
+              className="grid place-items-center h-20 w-20 rounded-full bg-white text-primary shadow-lg hover:scale-105 transition disabled:opacity-50"
+              aria-label="Capture"
+            >
+              {videoReady ? <Camera className="h-9 w-9" /> : <Loader2 className="h-7 w-7 animate-spin" />}
+            </button>
+            <button
+              onClick={() => { stopCamera(); setExpanded(false) }}
+              className="grid place-items-center h-14 w-14 rounded-full bg-white/10 text-white hover:bg-white/20 transition"
+              aria-label="Stop camera"
+            >
+              <Minimize2 className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
