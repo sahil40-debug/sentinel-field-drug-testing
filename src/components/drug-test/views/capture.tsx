@@ -64,20 +64,26 @@ export function CaptureStep() {
     if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
   }, [])
 
-  // Acquire a stream for the given facing mode. Returns the stream or throws.
+  // Acquire a stream for the given facing mode. Uses `ideal` (not `exact`) so
+  // the browser can fall back to any available camera if the requested facing
+  // mode isn't present — prevents "Requested device not found" on phones that
+  // only have one camera or don't report facingMode correctly.
   const acquireStream = useCallback(async (facing: Facing) => {
     let stream: MediaStream
     try {
+      // Try with ideal facingMode (lenient — browser picks best match)
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 960 } },
+        video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 960 } },
         audio: false,
       })
     } catch {
+      // Fallback: no facingMode constraint at all
       stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 960 } },
         audio: false,
       })
     }
+    // Stop any previous stream to free the camera hardware.
     if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop())
     streamRef.current = stream
     const track = stream.getVideoTracks()[0]
@@ -122,6 +128,15 @@ export function CaptureStep() {
     setFocusPoint(null)
     const nextFacing: Facing = isFrontCamera ? 'environment' : 'user'
     try {
+      // Fully stop the old stream + wait a tick so the camera hardware
+      // releases before we request the new one (prevents "Could not start
+      // video source" on Android).
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop())
+        streamRef.current = null
+      }
+      if (videoRef.current) videoRef.current.srcObject = null
+      await new Promise((r) => setTimeout(r, 200))
       await acquireStream(nextFacing)
       await new Promise((r) => requestAnimationFrame(() => r(null)))
       await attachStream()
