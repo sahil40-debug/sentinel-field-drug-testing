@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApp } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,15 +13,24 @@ const VISITED_KEY = 'sentinel_visited'
 export function LoginView() {
   const login = useApp((s) => s.login)
   const [officer, setOfficer] = useState('OFFICER-01')
-  // Detect returning visitor via lazy state initialiser (runs once, client-side).
-  const [returning, setReturning] = useState(() => {
-    if (typeof window === 'undefined') return false
+  // Start with `false` on both server and first client render so SSR HTML
+  // matches (avoids hydration mismatch). Read localStorage AFTER mount.
+  const [returning, setReturning] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    // Set mounted + read localStorage after hydration to avoid SSR mismatch.
+    // The setState calls here are the canonical "read-on-mount" pattern; the
+    // lint rule is overly strict for this legitimate use case.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setMounted(true)
     try {
-      return !!window.localStorage.getItem(VISITED_KEY)
+      setReturning(!!window.localStorage.getItem(VISITED_KEY))
     } catch {
-      return false
+      /* localStorage may be blocked — ignore */
     }
-  })
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [])
 
   const handleSignIn = () => {
     try {
@@ -88,9 +97,13 @@ export function LoginView() {
 
           <div className="space-y-1.5">
             <div className="display-eyebrow">Sign in</div>
-            <h2 className="display-heading text-3xl">{returning ? 'Welcome back' : 'Welcome'}</h2>
+            {/* Render 'Welcome' until mounted (server + first client render match),
+                then swap to the localStorage-derived value to avoid hydration mismatch. */}
+            <h2 className="display-heading text-3xl">
+              {mounted && returning ? 'Welcome back' : 'Welcome'}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              {returning ? 'Enter your operator ID to continue.' : 'Enter your operator ID to begin.'}
+              {mounted && returning ? 'Enter your operator ID to continue.' : 'Enter your operator ID to begin.'}
             </p>
           </div>
 
