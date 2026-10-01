@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { useApp } from '@/lib/store'
 import { Download, X, Share } from 'lucide-react'
 
 interface BeforeInstallPromptEvent extends Event {
@@ -17,14 +18,21 @@ const DISMISS_KEY = 'sentinel_install_dismissed'
  *   shows an "Install app" button.
  * - On iOS Safari (no beforeinstallprompt event): shows a hint to use
  *   Share → Add to Home Screen.
+ * - Positioned to never cover the sign-in form: on the login screen (not
+ *   authed) it sits at the very bottom edge; when authed it sits above the
+ *   bottom nav.
  * - User can dismiss; stays dismissed for 7 days.
  */
 export function InstallPrompt() {
+  const { authed } = useApp()
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [showIOSHint, setShowIOSHint] = useState(false)
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
+    // Don't show on the login page — only once the user is in the app.
+    // Showing it on login covers the sign-in form on mobile.
+    if (!authed) return
     // Respect the 7-day dismissal.
     try {
       const dismissedAt = typeof window !== 'undefined' ? window.localStorage.getItem(DISMISS_KEY) : null
@@ -59,7 +67,7 @@ export function InstallPrompt() {
     }
 
     return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
+  }, [authed])
 
   const handleInstall = async () => {
     if (!deferredPrompt) return
@@ -82,6 +90,7 @@ export function InstallPrompt() {
 
   if (!visible) return null
 
+  // Authed only — always sit above the bottom nav.
   return (
     <div className="fixed bottom-[4.5rem] sm:bottom-6 inset-x-0 sm:inset-x-auto z-50 px-3 sm:px-0 sm:right-6 sm:max-w-sm animate-in slide-in-from-bottom-4 duration-300">
       <div className="card-soft p-3 sm:p-4 flex items-center gap-3 shadow-lg">

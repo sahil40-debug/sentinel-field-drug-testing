@@ -11,8 +11,10 @@ import { toast } from 'sonner'
 import {
   Camera, Upload, RefreshCw, ArrowRight, CheckCircle2, XCircle, Loader2,
   ArrowLeft, MapPin, LocateFixed, Palette, Crosshair, ChevronDown,
-  Maximize2, Minimize2, SwitchCamera, X,
+  Maximize2, SwitchCamera, X,
 } from 'lucide-react'
+
+type Facing = 'environment' | 'user'
 
 export function CaptureStep() {
   const {
@@ -33,6 +35,26 @@ export function CaptureStep() {
   const [isFrontCamera, setIsFrontCamera] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [switching, setSwitching] = useState(false)
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number; id: number } | null>(null)
+  const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingFacingRef = useRef<Facing>('environment')
+
+  // Attach the current stream to the <video> element and play it.
+  // This is the SINGLE place that touches video.srcObject — avoids the
+  // "two video elements, one ref" bug where the expanded view was blank.
+  const attachStream = useCallback(async () => {
+    const video = videoRef.current
+    const stream = streamRef.current
+    if (!video || !stream) return
+    video.srcObject = stream
+    try {
+      await video.play()
+      setVideoReady(true)
+    } catch {
+      // autoplay can throw if play() is interrupted — retry once
+      try { await video.play(); setVideoReady(true) } catch { /* ignore */ }
+    }
+  }, [])
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -42,93 +64,89 @@ export function CaptureStep() {
     setVideoReady(false)
     setIsFrontCamera(false)
     setFocusPoint(null)
+    setSwitching(false)
     if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
   }, [])
 
-  // Start the camera with the requested facing mode ('environment' = rear,
-  // 'user' = front). Falls back to any camera if the requested one isn't available.
-  const startCamera = useCallback(async (facing: 'environment' | 'user' = 'environment') => {
+  // Acquire a stream for the given facing mode, store it in streamRef, and
+  // attach to the video. Used by both startCamera and switchCamera.
+  const acquireStream = useCallback(async (facing: Facing) => {
+    let stream: MediaStream | null = null
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false,
+      })
+    } catch {
+      // Fallback: no facingMode constraint (e.g. desktop with one webcam)
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false,
+      })
+    }
+    // Stop any previous stream first to free the camera.
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop())
+    }
+    streamRef.current = stream
+    // Detect facing from the track capabilities.
+    const track = stream.getVideoTracks()[0]
+    const caps = track?.getCapabilities?.() as MediaTrackCapabilities & { facingMode?: string[] } | undefined
+    const facingCap = caps?.facingMode
+    const label = (track?.label || '').toLowerCase()
+    const looksFront = label.includes('front') || label.includes('user') || label.includes('facetime')
+    const isFront = facingCap ? facingCap.includes('user') : (facing === 'user' || looksFront)
+    setIsFrontCamera(isFront)
+    return stream
+  }, [])
+
+  const startCamera = useCallback(async (facing: Facing = 'environment') => {
     setCamError(null)
     setVideoReady(false)
+    setCameraOn(true)
+    pendingFacingRef.current = facing
     try {
-      let stream: MediaStream | null = null
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 960 } },
-          audio: false,
-        })
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 960 } },
-          audio: false,
-        })
-      }
-      streamRef.current = stream
-      const track = stream.getVideoTracks()[0]
-      const label = (track?.label || '').toLowerCase()
-      const front = label.includes('front') || label.includes('user') || label.includes('facetime')
-      const caps = track?.getCapabilities?.() as MediaTrackCapabilities & { facingMode?: string[] } | undefined
-      const facingCap = caps?.facingMode
-      const isFront = facingCap ? facingCap.includes('user') : (facing === 'user' || front)
-      setIsFrontCamera(isFront)
-      setCameraOn(true)
+      await acquireStream(facing)
+      // Wait one frame so the (possibly just-mounted) <video> ref is set.
       await new Promise((r) => requestAnimationFrame(() => r(null)))
-      const video = videoRef.current
-      if (video) {
-        video.srcObject = stream
-        await video.play()
-      }
+      await attachStream()
     } catch (e) {
       setCamError(e instanceof Error ? e.message : 'Could not access camera')
       setCameraOn(false)
     }
-  }, [])
+  }, [acquireStream, attachStream])
 
-  // Switch between front and back cameras without closing the camera UI.
+  // Switch between front and back cameras without closing the UI.
   const switchCamera = useCallback(async () => {
     if (switching) return
     setSwitching(true)
-    const nextFacing: 'environment' | 'user' = isFrontCamera ? 'environment' : 'user'
-    // Stop the current stream first.
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    streamRef.current = null
-    if (videoRef.current) videoRef.current.srcObject = null
     setVideoReady(false)
     setFocusPoint(null)
+    const nextFacing: Facing = isFrontCamera ? 'environment' : 'user'
+    pendingFacingRef.current = nextFacing
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: nextFacing, width: { ideal: 1280 }, height: { ideal: 960 } },
-        audio: false,
-      })
-      streamRef.current = stream
-      const track = stream.getVideoTracks()[0]
-      const caps = track?.getCapabilities?.() as MediaTrackCapabilities & { facingMode?: string[] } | undefined
-      const facingCap = caps?.facingMode
-      const isFront = facingCap ? facingCap.includes('user') : nextFacing === 'user'
-      setIsFrontCamera(isFront)
-      const video = videoRef.current
-      if (video) {
-        video.srcObject = stream
-        await video.play()
-        setVideoReady(true)
-      }
+      await acquireStream(nextFacing)
+      await new Promise((r) => requestAnimationFrame(() => r(null)))
+      await attachStream()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not switch camera')
+      // Try to fall back to the previous facing so the user isn't left with a dead camera.
+      try { await acquireStream(isFrontCamera ? 'user' : 'environment'); await attachStream() } catch { /* ignore */ }
     } finally {
       setSwitching(false)
     }
-  }, [isFrontCamera, switching])
+  }, [switching, isFrontCamera, acquireStream, attachStream])
+
+  // When expanded toggles, the <video> element remounts in a different parent.
+  // Re-attach the stream so the preview keeps showing.
+  useEffect(() => {
+    if (cameraOn && streamRef.current) {
+      attachStream()
+    }
+  }, [expanded, attachStream, cameraOn])
 
   useEffect(() => () => stopCamera(), [stopCamera])
 
-  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number; id: number } | null>(null)
-  const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Tap-to-focus: shows a brief focus ring as visual feedback.
-  // We deliberately do NOT call applyConstraints() — switching focus modes
-  // causes a brief blur on most mobile cameras. Instead we let the browser's
-  // native continuous autofocus keep the preview sharp, and the ring is purely
-  // a cosmetic acknowledgement of the tap.
   const handleFocusTap = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!cameraOn || !videoReady) return
     const video = videoRef.current
@@ -138,15 +156,15 @@ export function CaptureStep() {
     const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY
     const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
-
-    // Show the ring with a unique id so the animation re-triggers each tap,
-    // then auto-hide it after 1.1s.
     const id = Date.now()
     setFocusPoint({ x, y, id })
     if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
     focusTimeoutRef.current = setTimeout(() => setFocusPoint(null), 1100)
   }, [cameraOn, videoReady])
 
+  // Capture the FULL frame as-is from the camera sensor (no cropping), so the
+  // stored photo is the complete scene the camera saw — matches the preview
+  // aspect ratio the user framed, regardless of object-cover display cropping.
   const capture = useCallback(() => {
     const video = videoRef.current
     if (!video || !videoReady) {
@@ -176,6 +194,7 @@ export function CaptureStep() {
     }
     setCapturedImage(url)
     stopCamera()
+    setExpanded(false)
   }, [setCapturedImage, stopCamera, videoReady, isFrontCamera])
 
   useEffect(() => {
@@ -251,6 +270,34 @@ export function CaptureStep() {
     )
   }
 
+  // The <video> element — rendered in ONE place (normal OR expanded, not both)
+  // so the ref always points to the visible element and the stream attaches.
+  const videoEl = (
+    <video
+      ref={videoRef}
+      className={`h-full w-full object-cover ${isFrontCamera ? 'scale-x-[-1]' : ''}`}
+      playsInline
+      muted
+      autoPlay
+      onLoadedData={() => setVideoReady(true)}
+      onCanPlay={() => setVideoReady(true)}
+    />
+  )
+
+  const focusRing = focusPoint && (
+    <div
+      key={focusPoint.id}
+      className="absolute pointer-events-none"
+      style={{
+        left: `${focusPoint.x * 100}%`,
+        top: `${focusPoint.y * 100}%`,
+        transform: 'translate(-50%, -50%)',
+      }}
+    >
+      <span className="block h-12 w-12 rounded-full border-2 border-white animate-ping-slow" />
+    </div>
+  )
+
   return (
     <div className="space-y-5 sm:space-y-6">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -281,99 +328,57 @@ export function CaptureStep() {
           {!capturedImage ? (
             <Card className="card-soft">
               <CardContent className="p-3 sm:p-4 space-y-4">
-                <div
-                  className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black grid place-items-center cursor-crosshair"
-                  onClick={handleFocusTap}
-                  onTouchStart={handleFocusTap}
-                >
-                  <video
-                    ref={videoRef}
-                    className={`h-full w-full object-cover ${isFrontCamera ? 'scale-x-[-1]' : ''}`}
-                    playsInline
-                    muted
-                    autoPlay
-                    onLoadedData={() => setVideoReady(true)}
-                    onCanPlay={() => setVideoReady(true)}
-                  />
-                  {!cameraOn && (
-                    <div className="absolute inset-0 grid place-items-center text-center text-white/70 p-6 bg-black">
-                      <div>
-                        <Camera className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">Camera is off.</p>
-                        <p className="text-xs mt-1 opacity-70">Include the reference colour card and the reaction area in the frame.</p>
-                      </div>
-                    </div>
-                  )}
-                  {cameraOn && !videoReady && (
-                    <div className="absolute inset-0 grid place-items-center bg-black/60 text-white/80 text-sm">
-                      <span className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" /> {switching ? 'Switching camera…' : 'Starting camera…'}
-                      </span>
-                    </div>
-                  )}
-                  {cameraOn && videoReady && (
-                    <>
-                      <div className="absolute top-2 left-2 pill bg-black/60 text-white/90 backdrop-blur-sm text-[11px]">
-                        <Crosshair className="h-3 w-3" /> Tap to focus
-                      </div>
-                      {/* Expand + camera switch controls (top-right) */}
-                      <div className="absolute top-2 right-2 flex gap-1.5">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setExpanded(true) }}
-                          className="grid place-items-center h-9 w-9 rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80 transition"
-                          aria-label="Expand camera"
-                        >
-                          <Maximize2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); switchCamera() }}
-                          disabled={switching}
-                          className="grid place-items-center h-9 w-9 rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80 transition disabled:opacity-50"
-                          aria-label="Switch camera"
-                        >
-                          {switching ? <Loader2 className="h-4 w-4 animate-spin" /> : <SwitchCamera className="h-4 w-4" />}
-                        </button>
-                      </div>
-                      {focusPoint && (
-                        <div
-                          key={focusPoint.id}
-                          className="absolute pointer-events-none"
-                          style={{
-                            left: `${focusPoint.x * 100}%`,
-                            top: `${focusPoint.y * 100}%`,
-                            transform: 'translate(-50%, -50%)',
-                          }}
-                        >
-                          <span className="block h-12 w-12 rounded-full border-2 border-white animate-ping-slow" />
+                {!expanded ? (
+                  /* Normal (inline) camera preview */
+                  <div
+                    className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black grid place-items-center cursor-crosshair"
+                    onClick={handleFocusTap}
+                    onTouchStart={handleFocusTap}
+                  >
+                    {videoEl}
+                    {!cameraOn && (
+                      <div className="absolute inset-0 grid place-items-center text-center text-white/70 p-6 bg-black">
+                        <div>
+                          <Camera className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">Camera is off.</p>
+                          <p className="text-xs mt-1 opacity-70">Include the reference colour card and the reaction area in the frame.</p>
                         </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {camError && (
-                  <p className="text-xs text-rose-600">Camera error: {camError}. You can still upload an image.</p>
-                )}
-
-                <div className="flex flex-wrap gap-2">
-                  {!cameraOn ? (
-                    <Button onClick={() => startCamera('environment')} variant="default" className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
-                      <Camera className="h-4 w-4" /> Start camera
-                    </Button>
-                  ) : (
-                    <Button onClick={capture} disabled={!videoReady} className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
-                      {videoReady ? <Camera className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
-                      Capture image
-                    </Button>
-                  )}
-                  <Button onClick={() => document.getElementById('upload-input')?.click()} variant="outline" className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
-                    <Upload className="h-4 w-4" /> Upload
-                  </Button>
-                  <input id="upload-input" type="file" accept="image/*" className="hidden" onChange={onUpload} />
-                  {cameraOn && (
-                    <Button onClick={stopCamera} variant="ghost" className="btn-pill h-11">Stop</Button>
-                  )}
-                </div>
+                      </div>
+                    )}
+                    {cameraOn && !videoReady && (
+                      <div className="absolute inset-0 grid place-items-center bg-black/60 text-white/80 text-sm">
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" /> {switching ? 'Switching camera…' : 'Starting camera…'}
+                        </span>
+                      </div>
+                    )}
+                    {cameraOn && videoReady && (
+                      <>
+                        <div className="absolute top-2 left-2 pill bg-black/60 text-white/90 backdrop-blur-sm text-[11px]">
+                          <Crosshair className="h-3 w-3" /> Tap to focus
+                        </div>
+                        <div className="absolute top-2 right-2 flex gap-1.5">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setExpanded(true) }}
+                            className="grid place-items-center h-9 w-9 rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80 transition"
+                            aria-label="Expand camera"
+                          >
+                            <Maximize2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); switchCamera() }}
+                            disabled={switching}
+                            className="grid place-items-center h-9 w-9 rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80 transition disabled:opacity-50"
+                            aria-label="Switch camera"
+                          >
+                            {switching ? <Loader2 className="h-4 w-4 animate-spin" /> : <SwitchCamera className="h-4 w-4" />}
+                          </button>
+                        </div>
+                        {focusRing}
+                      </>
+                    )}
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ) : (
@@ -406,7 +411,6 @@ export function CaptureStep() {
 
         {/* Side panel: GPS + manual colour + tip */}
         <div className="space-y-4">
-          {/* GPS */}
           <Card className="card-soft">
             <CardContent className="p-4 sm:p-5 space-y-3">
               <div className="flex items-center gap-2">
@@ -445,7 +449,6 @@ export function CaptureStep() {
             </CardContent>
           </Card>
 
-          {/* Manual colour override — collapsible, with discoverability hint */}
           <Card className="card-soft">
             <CardContent className="p-4 sm:p-5 space-y-3">
               <button
@@ -513,13 +516,40 @@ export function CaptureStep() {
         </div>
       </div>
 
-      {/* Expanded / fullscreen camera overlay */}
+      {/* Inline action buttons (below the preview) — always reachable, not hidden by nav */}
+      {!capturedImage && (
+        <div className="space-y-3">
+          {camError && (
+            <p className="text-xs text-rose-600">Camera error: {camError}. You can still upload an image.</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {!cameraOn ? (
+              <Button onClick={() => startCamera('environment')} variant="default" className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
+                <Camera className="h-4 w-4" /> Start camera
+              </Button>
+            ) : (
+              <Button onClick={capture} disabled={!videoReady} className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
+                {videoReady ? <Camera className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+                Capture image
+              </Button>
+            )}
+            <Button onClick={() => document.getElementById('upload-input')?.click()} variant="outline" className="btn-pill gap-1.5 h-11 flex-1 sm:flex-none">
+              <Upload className="h-4 w-4" /> Upload
+            </Button>
+            <input id="upload-input" type="file" accept="image/*" className="hidden" onChange={onUpload} />
+            {cameraOn && (
+              <Button onClick={stopCamera} variant="ghost" className="btn-pill h-11">Stop</Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Expanded / fullscreen camera overlay — the <video> moves here */}
       {expanded && cameraOn && (
         <div className="fixed inset-0 z-[90] bg-black animate-in fade-in duration-200 flex flex-col">
-          {/* Top bar: close + camera label */}
-          <div className="flex items-center justify-between px-4 pt-4 pb-2" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
-            <div className="text-white/80 text-sm font-medium">
-              {isFrontCamera ? 'Front camera' : 'Rear camera'}
+          <div className="flex items-center justify-between px-4 pb-2" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+            <div className="text-white/80 text-sm font-medium flex items-center gap-1.5">
+              <Camera className="h-4 w-4" /> {isFrontCamera ? 'Front camera' : 'Rear camera'}
             </div>
             <button
               onClick={() => setExpanded(false)}
@@ -529,41 +559,28 @@ export function CaptureStep() {
               <X className="h-5 w-5" />
             </button>
           </div>
-          {/* Video — fills the screen, tap to focus */}
           <div
             className="flex-1 relative overflow-hidden cursor-crosshair"
             onClick={handleFocusTap}
             onTouchStart={handleFocusTap}
           >
-            <video
-              className={`h-full w-full object-cover ${isFrontCamera ? 'scale-x-[-1]' : ''}`}
-              ref={videoRef}
-              playsInline
-              muted
-              autoPlay
-            />
-            {cameraOn && videoReady && (
+            {videoEl}
+            {!videoReady && (
+              <div className="absolute inset-0 grid place-items-center bg-black/60 text-white/80 text-sm">
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> {switching ? 'Switching…' : 'Loading…'}
+                </span>
+              </div>
+            )}
+            {videoReady && (
               <>
                 <div className="absolute top-3 left-3 pill bg-black/60 text-white/90 backdrop-blur-sm text-[11px]">
                   <Crosshair className="h-3 w-3" /> Tap to focus
                 </div>
-                {focusPoint && (
-                  <div
-                    key={focusPoint.id}
-                    className="absolute pointer-events-none"
-                    style={{
-                      left: `${focusPoint.x * 100}%`,
-                      top: `${focusPoint.y * 100}%`,
-                      transform: 'translate(-50%, -50%)',
-                    }}
-                  >
-                    <span className="block h-14 w-14 rounded-full border-2 border-white animate-ping-slow" />
-                  </div>
-                )}
+                {focusRing}
               </>
             )}
           </div>
-          {/* Bottom controls: switch + capture */}
           <div className="flex items-center justify-center gap-6 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3">
             <button
               onClick={switchCamera}
@@ -574,7 +591,7 @@ export function CaptureStep() {
               {switching ? <Loader2 className="h-6 w-6 animate-spin" /> : <SwitchCamera className="h-6 w-6" />}
             </button>
             <button
-              onClick={() => { capture(); setExpanded(false) }}
+              onClick={capture}
               disabled={!videoReady}
               className="grid place-items-center h-20 w-20 rounded-full bg-white text-primary shadow-lg hover:scale-105 transition disabled:opacity-50"
               aria-label="Capture"
@@ -586,7 +603,7 @@ export function CaptureStep() {
               className="grid place-items-center h-14 w-14 rounded-full bg-white/10 text-white hover:bg-white/20 transition"
               aria-label="Stop camera"
             >
-              <Minimize2 className="h-6 w-6" />
+              <X className="h-6 w-6" />
             </button>
           </div>
         </div>
